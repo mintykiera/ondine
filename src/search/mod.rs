@@ -76,6 +76,39 @@ pub fn get_best_move(
     let mut total_nodes: u64 = 0;
     let root_acc = network.accumulator(&crate::eval::OmoBoard(board));
 
+    // Immediate 1-ply mate check: if any root move delivers checkmate, return it instantly.
+    {
+        let mut mate_move: Option<Move> = None;
+        board.generate_moves(|moves| {
+            for m in moves {
+                if mate_move.is_some() {
+                    return false;
+                }
+                let mut next_board = board.clone();
+                next_board.play_unchecked(m);
+                // Opponent must be in check AND have no legal responses
+                if !next_board.checkers().is_empty() {
+                    let mut has_response = false;
+                    next_board.generate_moves(|_responses| {
+                        has_response = true;
+                        false
+                    });
+                    if !has_response {
+                        mate_move = Some(m);
+                        return false;
+                    }
+                }
+            }
+            false
+        });
+        if let Some(m) = mate_move {
+            if is_main_thread {
+                println!("info depth 1 score mate 1 pv {}", format_uci_move(board, m));
+            }
+            return (Some(m), None);
+        }
+    }
+
     if let Some(tb) = syzygy {
         let piece_count =
             (board.colors(cozy_chess::Color::White) | board.colors(cozy_chess::Color::Black)).len();
@@ -88,6 +121,19 @@ pub fn get_best_move(
                 for m in moves {
                     let mut next_board = board.clone();
                     next_board.play_unchecked(m);
+
+                    // Repetition-aware: skip moves that repeat a prior board state
+                    let next_hash = next_board.hash();
+                    if history_hashes.contains(&next_hash) {
+                        if is_main_thread {
+                            println!(
+                                "info string Syzygy skip repetition: {}",
+                                format_uci_move(board, m)
+                            );
+                        }
+                        continue;
+                    }
+
                     let fen = next_board.to_string();
                     if let Ok(epd) = fen.parse::<shakmaty::fen::Epd>() {
                         if let Ok(shak_board) =

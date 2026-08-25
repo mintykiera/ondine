@@ -94,7 +94,8 @@ impl SharedHistory {
         let p = prev_to as usize;
         let c = curr_to as usize;
         let val = self.cont_history[p][c].load(Ordering::Relaxed);
-        self.cont_history[p][c].store((val + bonus).min(10_000), Ordering::Relaxed);
+        let new_val = val + bonus - (val * bonus.abs()) / 16384;
+        self.cont_history[p][c].store(new_val.clamp(-16384, 16384), Ordering::Relaxed);
     }
 
     pub fn get_counter_move(&self, color: cozy_chess::Color, prev_move: Move) -> Option<Move> {

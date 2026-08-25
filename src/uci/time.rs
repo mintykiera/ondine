@@ -37,15 +37,24 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
         }
 
         let our_inc = parse_uci_param(tokens, inc_key).unwrap_or(0);
-        let mut mtg = parse_uci_param(tokens, "movestogo").unwrap_or(30);
+        let explicit_mtg = parse_uci_param(tokens, "movestogo");
+        let mut mtg = explicit_mtg.unwrap_or(25);
 
-        if safe_time < 2000 {
+        // Emergency time scaling only in sudden death (no explicit movestogo)
+        // to avoid flagging. When the GUI provides movestogo, trust it.
+        if explicit_mtg.is_none() && safe_time < 2000 {
             mtg = 40;
         }
 
         let base = safe_time / mtg.max(1);
         let target = base + (our_inc * 3) / 4;
-        let max_time = safe_time / 4;
+        // With explicit movestogo, allow up to 50% of remaining time per move;
+        // in sudden death, cap at 25% to protect against time pressure.
+        let max_time = if explicit_mtg.is_some() {
+            safe_time / 2
+        } else {
+            safe_time / 4
+        };
         let ms = target.min(max_time).max(10);
 
         return Duration::from_millis(ms);
