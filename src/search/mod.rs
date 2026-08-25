@@ -20,12 +20,13 @@ use crate::transposition::TranspositionTable;
 use crate::uci::{format_uci_move, parse_uci_move};
 use negamax::negamax;
 use pv::extract_pv;
-use types::{MATE_SCORE, MATE_THRESHOLD, MAX_DEPTH};
+use types::{ACC_STACK_SIZE, MATE_SCORE, MATE_THRESHOLD, MAX_DEPTH};
 
 pub fn get_best_move(
     board: &Board,
     time_limit: Duration,
     total_clock: Option<Duration>,
+    max_depth: Option<i32>,
     tt: &TranspositionTable,
     shared: &SharedHistory,
     stop_flag: Arc<AtomicBool>,
@@ -37,7 +38,7 @@ pub fn get_best_move(
     history_hashes: &mut Vec<u64>,
     opening_book: &Option<PolyglotBook>,
     syzygy: &Option<Tablebase<Chess>>,
-) -> (Option<Move>, Option<Move>) {
+) -> (Option<Move>, Option<Move>, u64) {
     if let Some(book) = opening_book {
         let fen = board.to_string();
         if let Some(entry) = book.get_best_move_from_fen(&fen) {
@@ -58,7 +59,7 @@ pub fn get_best_move(
                             format_uci_move(board, book_move)
                         );
                     }
-                    return (Some(book_move), None);
+                    return (Some(book_move), None, 0);
                 }
             }
         }
@@ -74,9 +75,13 @@ pub fn get_best_move(
     let mut best_move: Option<Move> = None;
     let mut best_score = 0i32;
     let mut total_nodes: u64 = 0;
-    let root_acc = network.accumulator(&crate::eval::OmoBoard(board));
 
-    // Immediate 1-ply mate check: if any root move delivers checkmate, return it instantly.
+    let mut acc_stack: Vec<nnue_rs::Accumulator> = Vec::with_capacity(ACC_STACK_SIZE);
+    acc_stack.push(network.accumulator(&crate::eval::OmoBoard(board)));
+    for _ in 1..ACC_STACK_SIZE {
+        acc_stack.push(network.empty_accumulator());
+    }
+
     {
         let mut mate_move: Option<Move> = None;
         board.generate_moves(|moves| {
@@ -86,7 +91,6 @@ pub fn get_best_move(
                 }
                 let mut next_board = board.clone();
                 next_board.play_unchecked(m);
-                // Opponent must be in check AND have no legal responses
                 if !next_board.checkers().is_empty() {
                     let mut has_response = false;
                     next_board.generate_moves(|_responses| {
@@ -105,7 +109,7 @@ pub fn get_best_move(
             if is_main_thread {
                 println!("info depth 1 score mate 1 pv {}", format_uci_move(board, m));
             }
-            return (Some(m), None);
+            return (Some(m), None, 1);
         }
     }
 
@@ -122,7 +126,6 @@ pub fn get_best_move(
                     let mut next_board = board.clone();
                     next_board.play_unchecked(m);
 
-                    // Repetition-aware: skip moves that repeat a prior board state
                     let next_hash = next_board.hash();
                     if history_hashes.contains(&next_hash) {
                         if is_main_thread {
@@ -185,7 +188,7 @@ pub fn get_best_move(
                         best_dtz
                     );
                 }
-                return (Some(m), None);
+                return (Some(m), None, 1);
             }
         }
     }
@@ -206,7 +209,9 @@ pub fn get_best_move(
         history_hashes.pop();
     }
 
-    for depth in start_depth..=MAX_DEPTH {
+    let max_search_depth = max_depth.unwrap_or(MAX_DEPTH).clamp(1, MAX_DEPTH);
+
+    for depth in start_depth..=max_search_depth {
         info.nodes = 0;
 
         if !is_pondering.load(Ordering::Relaxed) {
@@ -248,7 +253,7 @@ pub fn get_best_move(
                 history_hashes,
                 None,
                 network,
-                &root_acc,
+                &mut acc_stack,
                 syzygy,
                 None,
             );
@@ -360,5 +365,5 @@ pub fn get_best_move(
         tt.get(hash).and_then(|entry| entry.best_move)
     });
 
-    (best_move, ponder_move)
+    (best_move, ponder_move, total_nodes)
 }

@@ -199,6 +199,7 @@ fn main() {
 
                 let time_limit = parse_go_time(&tokens, board_snapshot.side_to_move());
                 let total_clock = parse_total_clock(&tokens, board_snapshot.side_to_move());
+                let max_depth = uci::time::parse_uci_param(&tokens, "depth").map(|d| d as i32);
 
                 let stop_flag = Arc::new(AtomicBool::new(false));
                 let is_pondering = Arc::new(AtomicBool::new(ponder));
@@ -223,10 +224,11 @@ fn main() {
                     let shared_clone = Arc::clone(&shared_history);
 
                     handle.threads.push(thread::spawn(move || {
-                        let (best, ponder_mv) = search::get_best_move(
+                        let (best, ponder_mv, _) = search::get_best_move(
                             &board_clone,
                             time_limit,
                             total_clock,
+                            max_depth,
                             &tt_clone,
                             &shared_clone,
                             sf_clone.clone(),
@@ -349,6 +351,11 @@ fn main() {
                     }
                     println!("info string Transposition table saved to disk");
                 }
+            }
+            "bench" => {
+                handle.stop_and_join();
+                let depth: i32 = tokens.get(1).and_then(|s| s.parse().ok()).unwrap_or(8);
+                uci::bench::run_bench(&tt, &network, depth);
             }
             "quit" => {
                 handle.stop_and_join();

@@ -8,6 +8,7 @@ pub(crate) const MATE_SCORE: i32 = 100_000;
 pub(crate) const MATE_THRESHOLD: i32 = 90_000;
 pub(crate) const MAX_PLY: usize = 128;
 pub(crate) const MAX_EXTENSIONS: i32 = 3;
+pub(crate) const ACC_STACK_SIZE: usize = MAX_PLY + 64;
 
 pub struct SharedHistory {
     pub history: [[[AtomicI32; 64]; 64]; 2],

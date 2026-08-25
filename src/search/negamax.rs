@@ -6,8 +6,8 @@ use shakmaty_syzygy::{Tablebase, Wdl};
 use super::ordering::lmr_reduction;
 use super::see::see;
 use super::types::{
-    MATE_SCORE, MATE_THRESHOLD, MAX_EXTENSIONS, MAX_PLY, MoveStack, SearchInfo, SharedHistory,
-    StagedMovePicker, score_from_tt, score_to_tt,
+    ACC_STACK_SIZE, MATE_SCORE, MATE_THRESHOLD, MAX_EXTENSIONS, MAX_PLY, MoveStack, SearchInfo,
+    SharedHistory, StagedMovePicker, score_from_tt, score_to_tt,
 };
 use crate::eval::piece_value;
 use crate::transposition::{NodeType, TranspositionTable};
@@ -29,6 +29,12 @@ impl SearchResult {
     }
 }
 
+#[inline(always)]
+fn acc_split(stack: &mut [Accumulator], ply: usize) -> (&Accumulator, &mut Accumulator) {
+    let (left, right) = stack.split_at_mut(ply + 1);
+    (&left[ply], &mut right[0])
+}
+
 pub(crate) fn negamax(
     board: &Board,
     depth: i32,
@@ -42,7 +48,7 @@ pub(crate) fn negamax(
     history_hashes: &mut Vec<u64>,
     prev_move: Option<Move>,
     network: &Network,
-    acc: &Accumulator,
+    acc_stack: &mut [Accumulator],
     syzygy: &Option<Tablebase<Chess>>,
     excluded_move: Option<Move>,
 ) -> SearchResult {
@@ -52,10 +58,14 @@ pub(crate) fn negamax(
     }
 
     info.nodes += 1;
+    let ply_idx = ply as usize;
 
     if ply >= (MAX_PLY as i32) - 1 {
         return SearchResult::new(
-            network.evaluate_accumulator(acc, crate::eval::OmoBoard(board).side_to_move()),
+            network.evaluate_accumulator(
+                &acc_stack[ply_idx],
+                crate::eval::OmoBoard(board).side_to_move(),
+            ),
             None,
             false,
         );
@@ -198,7 +208,7 @@ pub(crate) fn negamax(
 
     if depth <= 0 {
         return SearchResult::new(
-            quiescence_search(board, alpha, beta, info, network, acc),
+            quiescence_search(board, alpha, beta, ply, info, network, acc_stack),
             None,
             false,
         );
@@ -213,12 +223,14 @@ pub(crate) fn negamax(
     };
 
     let mut static_eval = if !in_check {
-        network.evaluate_accumulator(acc, crate::eval::OmoBoard(board).side_to_move())
+        network.evaluate_accumulator(
+            &acc_stack[ply_idx],
+            crate::eval::OmoBoard(board).side_to_move(),
+        )
     } else {
         -MATE_SCORE
     };
 
-    // TT static eval refinement (skip mate scores to prevent RFP/NMP distortion)
     if !in_check {
         if let Some(entry) = tt_entry {
             let tt_score = score_from_tt(entry.score, ply);
@@ -233,7 +245,6 @@ pub(crate) fn negamax(
         }
     }
 
-    // Store eval for improving heuristic
     let ply_idx_eval = ply as usize;
     info.set_eval(ply_idx_eval, static_eval);
 
@@ -244,7 +255,6 @@ pub(crate) fn negamax(
     };
     let improving = !in_check && ply >= 2 && prev_eval > -MATE_THRESHOLD && static_eval > prev_eval;
 
-    // Reverse futility pruning — extended to depth <= 7 with improving-aware margin
     let rfp_margin = if improving { 60 } else { 80 };
     if !in_check && ply > 0 && depth <= 7 && excluded_move.is_none() {
         if static_eval - rfp_margin * depth >= beta {
@@ -267,6 +277,10 @@ pub(crate) fn negamax(
         if our_pieces.len() > 0 {
             if let Some(null_board) = board.null_move() {
                 let r = 3 + depth / 3 + ((static_eval - beta) / 200).clamp(0, 3);
+                {
+                    let (parent, child) = acc_split(acc_stack, ply_idx);
+                    child.clone_from(parent);
+                }
                 history_hashes.push(hash);
                 let res = negamax(
                     &null_board,
@@ -281,7 +295,7 @@ pub(crate) fn negamax(
                     history_hashes,
                     None,
                     network,
-                    acc,
+                    acc_stack,
                     syzygy,
                     None,
                 );
@@ -327,7 +341,7 @@ pub(crate) fn negamax(
                         history_hashes,
                         prev_move,
                         network,
-                        acc,
+                        acc_stack,
                         syzygy,
                         Some(tt_m),
                     );
@@ -363,7 +377,7 @@ pub(crate) fn negamax(
             history_hashes,
             prev_move,
             network,
-            acc,
+            acc_stack,
             syzygy,
             None,
         );
@@ -396,8 +410,6 @@ pub(crate) fn negamax(
         }
     }
 
-    let ply_idx = ply as usize;
-
     let killers = if ply_idx < MAX_PLY {
         [info.get_killer(ply_idx, 0), info.get_killer(ply_idx, 1)]
     } else {
@@ -429,7 +441,6 @@ pub(crate) fn negamax(
             continue;
         }
 
-        // SEE pruning for quiet moves
         if !in_check && is_quiet && depth <= 6 && move_index > 0 && see(board, m) < -depth * 80 {
             continue;
         }
@@ -448,13 +459,15 @@ pub(crate) fn negamax(
             searched_quiets.push(m);
         }
 
-        let mut child_acc = network.empty_accumulator();
-        network.update(
-            &crate::eval::OmoBoard(board),
-            &crate::eval::OmoBoard(&next_board),
-            acc,
-            &mut child_acc,
-        );
+        {
+            let (parent_acc, child_acc) = acc_split(acc_stack, ply_idx);
+            network.update(
+                &crate::eval::OmoBoard(board),
+                &crate::eval::OmoBoard(&next_board),
+                parent_acc,
+                child_acc,
+            );
+        }
 
         let singular_ext = if is_singular && Some(m) == singular_move && extensions < MAX_EXTENSIONS
         {
@@ -481,7 +494,7 @@ pub(crate) fn negamax(
                 history_hashes,
                 Some(m),
                 network,
-                &child_acc,
+                acc_stack,
                 syzygy,
                 None,
             );
@@ -520,7 +533,7 @@ pub(crate) fn negamax(
                 history_hashes,
                 Some(m),
                 network,
-                &child_acc,
+                acc_stack,
                 syzygy,
                 None,
             );
@@ -542,7 +555,7 @@ pub(crate) fn negamax(
                         history_hashes,
                         Some(m),
                         network,
-                        &child_acc,
+                        acc_stack,
                         syzygy,
                         None,
                     );
@@ -631,9 +644,10 @@ pub(crate) fn quiescence_search(
     board: &Board,
     mut alpha: i32,
     beta: i32,
+    ply: i32,
     info: &mut SearchInfo,
     network: &Network,
-    acc: &Accumulator,
+    acc_stack: &mut [Accumulator],
 ) -> i32 {
     info.check_time();
     if info.aborted {
@@ -641,12 +655,28 @@ pub(crate) fn quiescence_search(
     }
 
     info.nodes += 1;
+    let ply_idx = ply as usize;
+
+    if ply_idx >= ACC_STACK_SIZE - 1 {
+        let in_check = !board.checkers().is_empty();
+        return if in_check {
+            -MATE_SCORE + ply
+        } else {
+            network.evaluate_accumulator(
+                &acc_stack[ply_idx],
+                crate::eval::OmoBoard(board).side_to_move(),
+            )
+        };
+    }
 
     let in_check = !board.checkers().is_empty();
     let stand_pat = if in_check {
-        -MATE_SCORE
+        -MATE_SCORE + ply
     } else {
-        network.evaluate_accumulator(acc, crate::eval::OmoBoard(board).side_to_move())
+        network.evaluate_accumulator(
+            &acc_stack[ply_idx],
+            crate::eval::OmoBoard(board).side_to_move(),
+        )
     };
 
     if !in_check {
@@ -677,7 +707,7 @@ pub(crate) fn quiescence_search(
     });
 
     if in_check && move_stack.is_empty() {
-        return -MATE_SCORE;
+        return -MATE_SCORE + ply;
     }
 
     let moves = move_stack.as_mut_slice();
@@ -718,15 +748,17 @@ pub(crate) fn quiescence_search(
         let mut next_board = board.clone();
         next_board.play_unchecked(*m);
 
-        let mut child_acc = network.empty_accumulator();
-        network.update(
-            &crate::eval::OmoBoard(board),
-            &crate::eval::OmoBoard(&next_board),
-            acc,
-            &mut child_acc,
-        );
+        {
+            let (parent_acc, child_acc) = acc_split(acc_stack, ply_idx);
+            network.update(
+                &crate::eval::OmoBoard(board),
+                &crate::eval::OmoBoard(&next_board),
+                parent_acc,
+                child_acc,
+            );
+        }
 
-        let score = -quiescence_search(&next_board, -beta, -alpha, info, network, &child_acc);
+        let score = -quiescence_search(&next_board, -beta, -alpha, ply + 1, info, network, acc_stack);
 
         if info.aborted {
             return 0;

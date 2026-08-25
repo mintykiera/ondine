@@ -40,10 +40,11 @@ pub(crate) fn run_tactics(tt: &TranspositionTable, network: &Network) {
         let mut hist = Vec::new();
         let no_book: Option<PolyglotBook> = None;
         let shared = crate::search::SharedHistory::new();
-        let (best, _) = crate::search::get_best_move(
+        let (best, _, _) = crate::search::get_best_move(
             &b,
             Duration::from_millis(1000),
             Some(Duration::from_millis(1000)),
+            None,
             &tt,
             &shared,
             stop_flag,
