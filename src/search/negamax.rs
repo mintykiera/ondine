@@ -181,10 +181,11 @@ pub(crate) fn negamax(
         }
     }
 
+    let is_pv = beta - alpha > 1;
     let original_alpha = alpha;
     let tt_entry = tt.get(hash);
 
-    if excluded_move.is_none() {
+    if excluded_move.is_none() && ply > 0 && !is_pv {
         if let Some(entry) = tt_entry {
             if entry.depth >= depth {
                 let score = score_from_tt(entry.score, ply);
@@ -361,7 +362,7 @@ pub(crate) fn negamax(
 
     let mut tt_move = tt_entry.and_then(|e| e.best_move);
 
-    let is_pv = beta - alpha > 1;
+
     if is_pv && depth >= 6 && !in_check && tt_move.is_none() && excluded_move.is_none() {
         let iid_depth = depth - 3;
         let _ = negamax(

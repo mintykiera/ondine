@@ -488,6 +488,7 @@ impl SearchInfo {
         is_pondering: Arc<AtomicBool>,
         time_limit_ms: Arc<AtomicU64>,
     ) -> Self {
+        let initially_pondering = is_pondering.load(Ordering::Relaxed);
         let safe_limit = if time_limit > Duration::from_millis(25) {
             time_limit - Duration::from_millis(15)
         } else {
@@ -503,7 +504,7 @@ impl SearchInfo {
             stop_flag,
             is_pondering,
             time_limit_ms,
-            was_pondering: false,
+            was_pondering: initially_pondering,
             killers: [[None; 2]; MAX_PLY],
             eval_stack: [0; MAX_PLY],
         }

@@ -31,10 +31,9 @@ pub(crate) fn run_bench(tt: &TranspositionTable, network: &Network, target_depth
         println!("Position {}/{}: {}", i + 1, BENCH_POSITIONS.len(), fen);
         let start = Instant::now();
 
-        // Run search fixed to target_depth
         let (best, _, nodes) = crate::search::get_best_move(
             &b,
-            Duration::from_secs(3600), // high time limit so it reaches target_depth
+            Duration::from_secs(3600),
             None,
             Some(target_depth),
             tt,
@@ -42,7 +41,7 @@ pub(crate) fn run_bench(tt: &TranspositionTable, network: &Network, target_depth
             stop_flag,
             is_pondering,
             time_limit_ms,
-            false, // quiet mode
+            false,
             0,
             network,
             &mut hist,
