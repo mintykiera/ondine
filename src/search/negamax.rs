@@ -94,7 +94,7 @@ pub(crate) fn negamax(
         }
     }
 
-    if board.occupied().len() <= 6 && ply > 0 && depth >= 2 && excluded_move.is_none() {
+    if board.occupied().len() <= 6 && ply > 0 && depth >= 8 && excluded_move.is_none() {
         if let Some(tb) = syzygy {
             let mut s_board = shakmaty::Board::empty();
             for &color in &[cozy_chess::Color::White, cozy_chess::Color::Black] {
