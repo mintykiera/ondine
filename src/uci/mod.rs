@@ -1,10 +1,10 @@
+pub mod bench;
 pub mod handle;
 pub mod move_fmt;
 pub mod perft;
 pub mod syzygy;
 pub mod tactics;
 pub mod time;
-pub mod bench;
 
 pub(crate) use handle::{
     SearchHandle, get_book_path, get_memory_path, get_nnue_path, get_nnue_sig_path,

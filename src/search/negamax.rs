@@ -16,16 +16,11 @@ use crate::transposition::{NodeType, TranspositionTable};
 pub(crate) struct SearchResult {
     pub score: i32,
     pub best_move: Option<Move>,
-    pub is_draw: bool,
 }
 
 impl SearchResult {
-    pub const fn new(score: i32, best_move: Option<Move>, is_draw: bool) -> Self {
-        Self {
-            score,
-            best_move,
-            is_draw,
-        }
+    pub const fn new(score: i32, best_move: Option<Move>) -> Self {
+        Self { score, best_move }
     }
 }
 
@@ -54,7 +49,7 @@ pub(crate) fn negamax(
 ) -> SearchResult {
     info.check_time();
     if info.aborted {
-        return SearchResult::new(0, None, false);
+        return SearchResult::new(0, None);
     }
 
     info.nodes += 1;
@@ -67,14 +62,13 @@ pub(crate) fn negamax(
                 crate::eval::OndineBoard(board).side_to_move(),
             ),
             None,
-            false,
         );
     }
 
     let hash = board.hash();
     if ply > 0 {
         if board.halfmove_clock() >= 100 {
-            return SearchResult::new(0, None, true);
+            return SearchResult::new(0, None);
         }
 
         let hc = board.halfmove_clock() as usize;
@@ -90,7 +84,7 @@ pub(crate) fn negamax(
             i += 2;
         }
         if is_repetition {
-            return SearchResult::new(0, None, true);
+            return SearchResult::new(0, None);
         }
     }
 
@@ -175,7 +169,7 @@ pub(crate) fn negamax(
                         Wdl::Loss => -(MATE_SCORE - 1000) + ply,
                         _ => 0,
                     };
-                    return SearchResult::new(egtb_score, None, false);
+                    return SearchResult::new(egtb_score, None);
                 }
             }
         }
@@ -191,7 +185,7 @@ pub(crate) fn negamax(
                 let score = score_from_tt(entry.score, ply);
                 match entry.node_type {
                     NodeType::Exact => {
-                        return SearchResult::new(score, entry.best_move, false);
+                        return SearchResult::new(score, entry.best_move);
                     }
                     NodeType::LowerBound => {
                         alpha = alpha.max(score);
@@ -201,7 +195,7 @@ pub(crate) fn negamax(
                     }
                 }
                 if alpha >= beta {
-                    return SearchResult::new(score, entry.best_move, false);
+                    return SearchResult::new(score, entry.best_move);
                 }
             }
         }
@@ -209,9 +203,10 @@ pub(crate) fn negamax(
 
     if depth <= 0 {
         return SearchResult::new(
-            quiescence_search(board, alpha, beta, ply, info, network, acc_stack),
+            quiescence_search(
+                board, alpha, beta, ply, info, tt, shared, network, acc_stack,
+            ),
             None,
-            false,
         );
     }
 
@@ -259,7 +254,20 @@ pub(crate) fn negamax(
     let rfp_margin = if improving { 60 } else { 80 };
     if !in_check && ply > 0 && depth <= 7 && excluded_move.is_none() {
         if static_eval - rfp_margin * depth >= beta {
-            return SearchResult::new(beta, None, false);
+            return SearchResult::new(beta, None);
+        }
+    }
+
+    // Razoring: if static eval is far below alpha at low depth, verify with qsearch
+    if !in_check && ply > 0 && depth <= 3 && excluded_move.is_none() && !is_pv {
+        let razor_margin = 150 * depth;
+        if static_eval + razor_margin <= alpha {
+            let razor_score = quiescence_search(
+                board, alpha, beta, ply, info, tt, shared, network, acc_stack,
+            );
+            if razor_score <= alpha {
+                return SearchResult::new(razor_score, None);
+            }
         }
     }
 
@@ -302,11 +310,39 @@ pub(crate) fn negamax(
                 );
                 history_hashes.pop();
                 if info.aborted {
-                    return SearchResult::new(0, None, false);
+                    return SearchResult::new(0, None);
                 }
                 let null_score = -res.score;
                 if null_score >= beta {
-                    return SearchResult::new(beta, None, false);
+                    // Verification search at high depths to avoid zugzwang blunders.
+                    // Pass prev_move: None so NMP is disabled during verification!
+                    if depth >= 12 {
+                        let verify_res = negamax(
+                            board,
+                            depth - r - 1,
+                            beta - 1,
+                            beta,
+                            ply,
+                            extensions,
+                            info,
+                            tt,
+                            shared,
+                            history_hashes,
+                            None,
+                            network,
+                            acc_stack,
+                            syzygy,
+                            None,
+                        );
+                        if info.aborted {
+                            return SearchResult::new(0, None);
+                        }
+                        if verify_res.score >= beta {
+                            return SearchResult::new(beta, None);
+                        }
+                    } else {
+                        return SearchResult::new(beta, None);
+                    }
                 }
             }
         }
@@ -348,7 +384,7 @@ pub(crate) fn negamax(
                     );
 
                     if info.aborted {
-                        return SearchResult::new(0, None, false);
+                        return SearchResult::new(0, None);
                     }
 
                     if sing_res.score <= singular_alpha {
@@ -360,33 +396,14 @@ pub(crate) fn negamax(
         }
     }
 
-    let mut tt_move = tt_entry.and_then(|e| e.best_move);
+    let tt_move = tt_entry.and_then(|e| e.best_move);
 
-
-    if is_pv && depth >= 6 && !in_check && tt_move.is_none() && excluded_move.is_none() {
-        let iid_depth = depth - 3;
-        let _ = negamax(
-            board,
-            iid_depth,
-            alpha,
-            beta,
-            ply,
-            extensions,
-            info,
-            tt,
-            shared,
-            history_hashes,
-            prev_move,
-            network,
-            acc_stack,
-            syzygy,
-            None,
-        );
-        if info.aborted {
-            return SearchResult::new(0, None, false);
-        }
-        tt_move = tt.get(hash).and_then(|e| e.best_move);
-    }
+    // Internal Iterative Reduction: 1-ply reduction when no TT move is available
+    let depth = if depth >= 4 && tt_move.is_none() && !in_check && excluded_move.is_none() {
+        depth - 1
+    } else {
+        depth
+    };
 
     let mut move_stack = MoveStack::new();
     board.generate_moves(|move_list| {
@@ -398,9 +415,9 @@ pub(crate) fn negamax(
 
     if move_stack.is_empty() {
         if in_check {
-            return SearchResult::new(-MATE_SCORE + (ply as i32), None, false);
+            return SearchResult::new(-MATE_SCORE + (ply as i32), None);
         } else {
-            return SearchResult::new(0, None, false);
+            return SearchResult::new(0, None);
         }
     }
 
@@ -422,7 +439,6 @@ pub(crate) fn negamax(
     let mut picker = StagedMovePicker::new(&move_stack, tt_move, killers, counter_move);
     let mut best_move: Option<Move> = None;
     let mut best_score = -MATE_SCORE;
-    let mut best_score_tainted = false;
     let mut move_index = 0usize;
     let mut quiet_moves_searched = 0i32;
     let mut searched_quiets = MoveStack::new();
@@ -438,12 +454,31 @@ pub(crate) fn negamax(
         let is_capture = board.color_on(m.to).is_some() || is_ep;
         let is_quiet = !is_capture && m.promotion.is_none();
 
-        if !in_check && depth <= 4 && is_quiet && quiet_moves_searched > 3 + (2 * depth * depth) {
+        // Late Move Pruning: skip late quiet moves at low depth
+        let lmp_threshold = (3 + depth * depth) / (2 - improving as i32);
+        if !in_check && depth <= 4 && is_quiet && quiet_moves_searched > lmp_threshold {
             continue;
         }
 
+        // SEE pruning for quiet moves
         if !in_check && is_quiet && depth <= 6 && move_index > 0 && see(board, m) < -depth * 80 {
             continue;
+        }
+
+        // SEE pruning for captures at low depth
+        if !in_check && is_capture && depth <= 5 && move_index > 0 && see(board, m) < -depth * 80 {
+            continue;
+        }
+
+        // History pruning for quiet moves (only late quiets to prevent pruning candidate killer/counter moves)
+        if !in_check && is_quiet && depth <= 5 && quiet_moves_searched >= 3 {
+            let hist = shared.get_history(board.side_to_move(), m.from, m.to);
+            let cont = prev_move
+                .map(|pm| shared.get_cont_history(pm.to, m.to))
+                .unwrap_or(0);
+            if hist + cont < -2048 * depth {
+                continue;
+            }
         }
 
         let mut next_board = board.clone();
@@ -478,7 +513,6 @@ pub(crate) fn negamax(
         };
 
         let mut score;
-        let mut score_tainted;
 
         if move_index == 0 {
             history_hashes.push(hash);
@@ -501,7 +535,6 @@ pub(crate) fn negamax(
             );
             history_hashes.pop();
             score = -res.score;
-            score_tainted = res.is_draw;
         } else {
             let mut reduced_depth = depth - 1 + singular_ext;
             let is_killer = ply_idx < MAX_PLY && (killers[0] == Some(m) || killers[1] == Some(m));
@@ -539,42 +572,60 @@ pub(crate) fn negamax(
                 None,
             );
             score = -res.score;
-            score_tainted = res.is_draw;
 
-            if score > alpha {
-                if do_lmr || score < beta {
-                    let full_res = negamax(
-                        &next_board,
-                        depth - 1 + singular_ext,
-                        -beta,
-                        -alpha,
-                        ply + 1,
-                        extensions + singular_ext,
-                        info,
-                        tt,
-                        shared,
-                        history_hashes,
-                        Some(m),
-                        network,
-                        acc_stack,
-                        syzygy,
-                        None,
-                    );
-                    score = -full_res.score;
-                    score_tainted = full_res.is_draw;
-                }
+            // LMR re-search: only if reduction was actually applied (> 0) and score beat alpha
+            if do_lmr && reduced_depth < depth - 1 + singular_ext && score > alpha {
+                let zw_res = negamax(
+                    &next_board,
+                    depth - 1 + singular_ext,
+                    -alpha - 1,
+                    -alpha,
+                    ply + 1,
+                    extensions + singular_ext,
+                    info,
+                    tt,
+                    shared,
+                    history_hashes,
+                    Some(m),
+                    network,
+                    acc_stack,
+                    syzygy,
+                    None,
+                );
+                score = -zw_res.score;
+            }
+
+            // PVS re-search: if score is within (alpha, beta), re-search with full window
+            if score > alpha && score < beta {
+                let pv_res = negamax(
+                    &next_board,
+                    depth - 1 + singular_ext,
+                    -beta,
+                    -alpha,
+                    ply + 1,
+                    extensions + singular_ext,
+                    info,
+                    tt,
+                    shared,
+                    history_hashes,
+                    Some(m),
+                    network,
+                    acc_stack,
+                    syzygy,
+                    None,
+                );
+                score = -pv_res.score;
             }
             history_hashes.pop();
         }
 
         if info.aborted {
-            return SearchResult::new(0, None, false);
+            return SearchResult::new(0, None);
         }
 
         if score > best_score {
             best_score = score;
             best_move = Some(m);
-            best_score_tainted = score_tainted;
         }
         if score > alpha {
             alpha = score;
@@ -621,7 +672,7 @@ pub(crate) fn negamax(
         best_score = alpha;
     }
 
-    if excluded_move.is_none() && !best_score_tainted {
+    if excluded_move.is_none() {
         let node_type = if best_score <= original_alpha {
             NodeType::UpperBound
         } else if best_score >= beta {
@@ -638,7 +689,7 @@ pub(crate) fn negamax(
         );
     }
 
-    SearchResult::new(best_score, best_move, best_score_tainted)
+    SearchResult::new(best_score, best_move)
 }
 
 pub(crate) fn quiescence_search(
@@ -647,6 +698,8 @@ pub(crate) fn quiescence_search(
     beta: i32,
     ply: i32,
     info: &mut SearchInfo,
+    tt: &TranspositionTable,
+    shared: &SharedHistory,
     network: &Network,
     acc_stack: &mut [Accumulator],
 ) -> i32 {
@@ -671,6 +724,24 @@ pub(crate) fn quiescence_search(
     }
 
     let in_check = !board.checkers().is_empty();
+
+    // TT probing in quiescence search
+    let hash = board.hash();
+    let tt_entry = tt.get(hash);
+    if !in_check {
+        if let Some(entry) = tt_entry {
+            if entry.depth >= 0 {
+                let tt_score = score_from_tt(entry.score, ply);
+                match entry.node_type {
+                    NodeType::Exact => return tt_score,
+                    NodeType::LowerBound if tt_score >= beta => return tt_score,
+                    NodeType::UpperBound if tt_score <= alpha => return tt_score,
+                    _ => {}
+                }
+            }
+        }
+    }
+
     let stand_pat = if in_check {
         -MATE_SCORE + ply
     } else {
@@ -711,19 +782,36 @@ pub(crate) fn quiescence_search(
         return -MATE_SCORE + ply;
     }
 
+    // Sort by MVV-LVA + capture history as tiebreaker
+    let tt_move = tt_entry.and_then(|e| e.best_move);
+    let color = board.side_to_move();
     let moves = move_stack.as_mut_slice();
-    moves.sort_unstable_by_key(|m| {
-        let is_ep = board.piece_on(m.from) == Some(Piece::Pawn)
-            && m.from.file() != m.to.file()
-            && board.color_on(m.to).is_none();
-        let victim_val = if is_ep {
-            piece_value(Piece::Pawn)
-        } else {
-            board.piece_on(m.to).map(piece_value).unwrap_or(0)
+    moves.sort_unstable_by(|a, b| {
+        let score_move = |m: &Move| -> i32 {
+            if Some(*m) == tt_move {
+                return 1_000_000;
+            }
+            let is_ep = board.piece_on(m.from) == Some(Piece::Pawn)
+                && m.from.file() != m.to.file()
+                && board.color_on(m.to).is_none();
+            let victim_val = if is_ep {
+                piece_value(Piece::Pawn)
+            } else {
+                board.piece_on(m.to).map(piece_value).unwrap_or(0)
+            };
+            let attacker_val = board.piece_on(m.from).map(piece_value).unwrap_or(100);
+            let promo_val = m.promotion.map(piece_value).unwrap_or(0);
+            let cap_hist = shared.get_capture_history(color, m.from, m.to) / 32;
+            (victim_val * 10 - attacker_val + promo_val * 10) * 100 + cap_hist
         };
-        let promo_val = m.promotion.map(piece_value).unwrap_or(0);
-        -(victim_val + promo_val)
+        score_move(b).cmp(&score_move(a))
     });
+
+    let mut best_score = if in_check {
+        -MATE_SCORE + ply
+    } else {
+        stand_pat
+    };
 
     const DELTA_MARGIN: i32 = 200;
     for m in moves.iter() {
@@ -759,19 +847,32 @@ pub(crate) fn quiescence_search(
             );
         }
 
-        let score = -quiescence_search(&next_board, -beta, -alpha, ply + 1, info, network, acc_stack);
+        let score = -quiescence_search(
+            &next_board,
+            -beta,
+            -alpha,
+            ply + 1,
+            info,
+            tt,
+            shared,
+            network,
+            acc_stack,
+        );
 
         if info.aborted {
             return 0;
         }
 
+        if score > best_score {
+            best_score = score;
+        }
         if score >= beta {
-            return beta;
+            return score;
         }
         if score > alpha {
             alpha = score;
         }
     }
 
-    alpha
+    best_score
 }

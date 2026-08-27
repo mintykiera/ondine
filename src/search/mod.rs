@@ -351,7 +351,7 @@ pub fn get_best_move(
             } else {
                 current_limit
             };
-            let soft_limit = (effective_limit * 6) / 10;
+            let soft_limit = (effective_limit * 85) / 100;
             if info.start_time.elapsed() >= soft_limit {
                 break;
             }

@@ -28,8 +28,9 @@ fn main() {
     let mut game_history: Vec<u64> = Vec::new();
 
     let nnue_path = uci::get_nnue_path();
-    let network =
-        Arc::new(Network::from_file(nnue_path.to_str().unwrap()).expect("Failed to load ondine.nnue"));
+    let network = Arc::new(
+        Network::from_file(nnue_path.to_str().unwrap()).expect("Failed to load ondine.nnue"),
+    );
 
     let mem_path = get_memory_path();
     let sig_path = uci::get_nnue_sig_path();

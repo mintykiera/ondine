@@ -1,9 +1,9 @@
+use crate::transposition::TranspositionTable;
 use cozy_chess::Board;
 use nnue_rs::Network;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
-use crate::transposition::TranspositionTable;
 
 const BENCH_POSITIONS: &[&str] = &[
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
