@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg?style=flat-square" alt="License: All Rights Reserved"></a>
-  <a href="https://lichess.org/@/ondine-engine"><img src="https://img.shields.io/badge/Lichess-Play%20Ondine-orange?style=flat-square&logo=lichess" alt="Lichess"></a>
+  <a href="https://lichess.org/@/LaOndine"><img src="https://img.shields.io/badge/Lichess-Play%20Ondine-orange?style=flat-square&logo=lichess" alt="Lichess"></a>
   <img src="https://img.shields.io/badge/Rust-2024%20Edition-black?style=flat-square&logo=rust" alt="Rust">
 </p>
 
@@ -24,12 +24,12 @@ Play against Ondine on Lichess: [lichess.org/@/LaOndine](https://lichess.org/@/L
 - **[Principal Variation Search (PVS)](https://www.chessprogramming.org/Principal_Variation_Search):** [Negamax](https://www.chessprogramming.org/Negamax) [alpha-beta search](https://www.chessprogramming.org/Alpha-Beta) with scout zero-window probing and full-depth re-searches.
 - **[Dynamic Aspiration Windows](https://www.chessprogramming.org/Aspiration_Windows):** Tight initial search bounds (±20 cp) centered on the previous iteration score, geometrically widening on fail-high/low with full-window fallback.
 - **Pruning & Reductions:**
-  - **[Null Move Pruning (NMP)](https://www.chessprogramming.org/Null_Move_Pruning):** Adaptive depth reduction ($R = 3 + \text{depth} / 6$) with [zugzwang](https://www.chessprogramming.org/Zugzwang) verification (non-pawn material check).
+  - **[Null Move Pruning (NMP)](https://www.chessprogramming.org/Null_Move_Pruning):** Adaptive depth reduction ($R = 3 + \text{depth} / 3 + \text{clamp}((\text{eval} - \beta) / 200,\, 0,\, 3)$) with [zugzwang](https://www.chessprogramming.org/Zugzwang) verification (non-pawn material check).
   - **[Reverse Futility Pruning (RFP)](https://www.chessprogramming.org/Reverse_Futility_Pruning):** Static evaluation margins at shallow depths.
   - **[Futility Pruning (FP)](https://www.chessprogramming.org/Futility_Pruning):** Prunes unpromising quiet moves near leaf nodes.
   - **[Late Move Pruning (LMP)](https://www.chessprogramming.org/Late_Move_Pruning):** Move count thresholds based on quadratic depth scaling ($3 + 2 \times \text{depth}^2$).
   - **[History-Adjusted Late Move Reductions (LMR)](https://www.chessprogramming.org/Late_Move_Reductions):** Base logarithmic reductions scaled dynamically by quiet history scores ($\text{reduction} - \text{history} / 4096$).
-  - **[Static Exchange Evaluation (SEE)](https://www.chessprogramming.org/Static_Exchange_Evaluation):** Full ray-cast exchange evaluation for capture verification and pruning.
+  - **[Static Exchange Evaluation (SEE)](https://www.chessprogramming.org/Static_Exchange_Evaluation):** Iterative exchange evaluation with x-ray discovery for capture verification and pruning.
 
 - **Search Extensions:**
   - **[Check Extensions](https://www.chessprogramming.org/Check_Extensions):** Extends search depth when in check.
@@ -54,7 +54,7 @@ Moves are ordered using an optimized 6-stage move picker:
 - **[Lockless Lazy SMP](https://www.chessprogramming.org/Lazy_SMP):** Multi-threaded parallel search using a 4-way associative XOR-hashed [Transposition Table](https://www.chessprogramming.org/Transposition_Table) (`AtomicU64`) and asymmetric thread depth staggering with zero mutex overhead during search.
 - **[Polyglot Opening Book](https://www.chessprogramming.org/PolyGlot):** Fast opening lookup integration.
 - **Persistent Memory (`ondine_memory.bin`):** Automatic serialization and restoration of Transposition Table entries across sessions.
-- **Adaptive [Time Management](https://www.chessprogramming.org/Time_Management):** Dynamic allocation factoring in move stability cutoffs, panic buffers on sharp score drops, soft/hard time margins, and ponderhit support.
+- **Adaptive [Time Management](https://www.chessprogramming.org/Time_Management):** Dynamic allocation with panic buffers on sharp score drops, soft/hard time margins, and ponderhit support.
 
 ---
 
