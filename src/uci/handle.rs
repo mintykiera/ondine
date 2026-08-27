@@ -7,31 +7,31 @@ use std::time::SystemTime;
 pub(crate) fn get_nnue_path() -> PathBuf {
     if let Ok(mut path) = std::env::current_exe() {
         path.pop();
-        path.push("omo.nnue");
+        path.push("ondine.nnue");
         if path.exists() {
             return path;
         }
     }
-    PathBuf::from("omo.nnue")
+    PathBuf::from("ondine.nnue")
 }
 
 pub(crate) fn get_memory_path() -> PathBuf {
     if let Ok(mut path) = std::env::current_exe() {
         path.pop();
-        path.push("omo_memory.bin");
+        path.push("ondine_memory.bin");
         path
     } else {
-        PathBuf::from("omo_memory.bin")
+        PathBuf::from("ondine_memory.bin")
     }
 }
 
 pub(crate) fn get_nnue_sig_path() -> PathBuf {
     if let Ok(mut path) = std::env::current_exe() {
         path.pop();
-        path.push("omo_memory.sig");
+        path.push("ondine_memory.sig");
         path
     } else {
-        PathBuf::from("omo_memory.sig")
+        PathBuf::from("ondine_memory.sig")
     }
 }
 

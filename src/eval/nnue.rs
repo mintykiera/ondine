@@ -1,9 +1,9 @@
 use cozy_chess::{Board, Color, Piece};
 use nnue_rs::{Board as NnueBoard, Color as NColor, Piece as NPiece, PieceKind as NPieceKind};
 
-pub struct OmoBoard<'a>(pub &'a Board);
+pub struct OndineBoard<'a>(pub &'a Board);
 
-impl<'a> OmoBoard<'a> {
+impl<'a> OndineBoard<'a> {
     pub fn side_to_move(&self) -> NColor {
         match self.0.side_to_move() {
             Color::White => NColor::White,
@@ -12,7 +12,7 @@ impl<'a> OmoBoard<'a> {
     }
 }
 
-impl<'a> NnueBoard for OmoBoard<'a> {
+impl<'a> NnueBoard for OndineBoard<'a> {
     fn side_to_move(&self) -> NColor {
         match self.0.side_to_move() {
             Color::White => NColor::White,

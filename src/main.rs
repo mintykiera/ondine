@@ -29,7 +29,7 @@ fn main() {
 
     let nnue_path = uci::get_nnue_path();
     let network =
-        Arc::new(Network::from_file(nnue_path.to_str().unwrap()).expect("Failed to load omo.nnue"));
+        Arc::new(Network::from_file(nnue_path.to_str().unwrap()).expect("Failed to load ondine.nnue"));
 
     let mem_path = get_memory_path();
     let sig_path = uci::get_nnue_sig_path();
@@ -121,7 +121,7 @@ fn main() {
                 }
             }
             "uci" => {
-                println!("id name Omo");
+                println!("id name Ondine");
                 println!("id author kieraesque");
                 println!("option name Threads type spin default 1 min 1 max 256");
                 println!("option name SyzygyPath type string default syzygy");

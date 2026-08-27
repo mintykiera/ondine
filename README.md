@@ -1,72 +1,20 @@
-<h1 align="center">OMO</h1>
+<h1 align="center">Ondine</h1>
 
 <p align="center">
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg?style=flat-square" alt="License: All Rights Reserved"></a>
-  <a href="https://lichess.org/@/omo-engine"><img src="https://img.shields.io/badge/Lichess-Play%20OMO-orange?style=flat-square&logo=lichess" alt="Lichess"></a>
+  <a href="https://lichess.org/@/ondine-engine"><img src="https://img.shields.io/badge/Lichess-Play%20Ondine-orange?style=flat-square&logo=lichess" alt="Lichess"></a>
   <img src="https://img.shields.io/badge/Rust-2024%20Edition-black?style=flat-square&logo=rust" alt="Rust">
 </p>
 
-OMO is a high-performance, multi-threaded UCI chess engine written in pure, memory-safe Rust on top of `cozy-chess`. It pairs a custom **[NNUE](https://www.chessprogramming.org/NNUE)** evaluation network with an optimized [alpha-beta search](https://www.chessprogramming.org/Alpha-Beta) pipeline featuring modern pruning, history-guided reductions, and lockless concurrency.
+Ondine is a high-performance, multi-threaded UCI chess engine written in pure, memory-safe Rust on top of `cozy-chess`. It pairs a custom **[NNUE](https://www.chessprogramming.org/NNUE)** evaluation network with an optimized [alpha-beta search](https://www.chessprogramming.org/Alpha-Beta) pipeline featuring modern pruning, history-guided reductions, and lockless concurrency.
 
-Play against OMO on Lichess: [lichess.org/@/omo-engine](https://lichess.org/@/omo-engine)
-
----
-
-## Performance & Benchmarks
-
-OMO has been benchmarked across **300-game tournament matches** against calibrated Stockfish skill level baselines (900 games total):
-
-| Opponent Baseline                          |  Record (300 Games)   |       Score Rate        |   Elo Diff    | Estimated Performance | Draw Rate |
-| :----------------------------------------- | :-------------------: | :---------------------: | :-----------: | :-------------------: | :-------: |
-| **Stockfish (Skill Level 15 • ~3070 Elo)** | **200W – 67L – 33D**  | **72.2%** (216.5 / 300) | +165.5 ± 40.8 |     **~3235 Elo**     |   11.0%   |
-| **Stockfish (Skill Level 16 • ~3111 Elo)** | **154W – 75L – 71D**  | **63.2%** (189.5 / 300) | +93.7 ± 35.3  |     **~3205 Elo**     |   23.7%   |
-| **Stockfish (Skill Level 17 • ~3141 Elo)** | **105W – 84L – 111D** | **53.5%** (160.5 / 300) | +24.4 ± 31.3  |     **~3165 Elo**     |   37.0%   |
-
-### Detailed Match Breakdowns
-
-#### Stockfish Skill Level 15 (~3070 Elo Baseline)
-
-| Metric                    | Result                                 |
-| :------------------------ | :------------------------------------- |
-| **Opponent**              | Stockfish (Skill Level 15 • ~3070 Elo) |
-| **Record**                | 200W / 67L / 33D                       |
-| **Score Rate**            | 72.2% (216.5 / 300)                    |
-| **Elo Difference**        | +165.5 ± 40.8                          |
-| **Estimated Performance** | ~3235 Elo                              |
-| **Draw Ratio**            | 11.0%                                  |
-| **Color Splits**          | White: 79.5% • Black: 64.8%            |
-
-#### Stockfish Skill Level 16 (~3111 Elo Baseline)
-
-| Metric                    | Result                                 |
-| :------------------------ | :------------------------------------- |
-| **Opponent**              | Stockfish (Skill Level 16 • ~3111 Elo) |
-| **Record**                | 154W / 75L / 71D                       |
-| **Score Rate**            | 63.2% (189.5 / 300)                    |
-| **Elo Difference**        | +93.7 ± 35.3                           |
-| **Estimated Performance** | ~3205 Elo                              |
-| **Draw Ratio**            | 23.7%                                  |
-| **Color Splits**          | White: 66.7% • Black: 59.7%            |
-
-#### Stockfish Skill Level 17 (~3141 Elo Baseline)
-
-| Metric                    | Result                                 |
-| :------------------------ | :------------------------------------- |
-| **Opponent**              | Stockfish (Skill Level 17 • ~3141 Elo) |
-| **Record**                | 105W / 84L / 111D                      |
-| **Score Rate**            | 53.5% (160.5 / 300)                    |
-| **Elo Difference**        | +24.4 ± 31.3                           |
-| **Estimated Performance** | ~3165 Elo                              |
-| **Draw Ratio**            | 37.0%                                  |
-| **Color Splits**          | White: 58.3% • Black: 48.7%            |
-
----
+Play against Ondine on Lichess: [lichess.org/@/LaOndine](https://lichess.org/@/LaOndine)
 
 ## Architecture & Features
 
 ### Evaluation & Endgame Knowledge
 
-- **Custom [NNUE](https://www.chessprogramming.org/NNUE) (`omo.nnue`):** Efficiently Updatable Neural Network evaluated with incremental accumulator updates on move make/unmake via `nnue-rs`.
+- **Custom [NNUE](https://www.chessprogramming.org/NNUE) (`ondine.nnue`):** Efficiently Updatable Neural Network evaluated with incremental accumulator updates on move make/unmake via `nnue-rs`.
 - **[Syzygy Tablebase](https://www.chessprogramming.org/Syzygy_Bases) Probing:**
   - **Root Probing:** Instant WDL & DTZ resolution for positions with ≤ 6 pieces, selecting optimal winning lines to convert endgames without searching.
   - **In-Tree Probing:** Depth-gated tablebase lookups to guarantee exact theoretical play in simplified branches.
@@ -105,7 +53,7 @@ Moves are ordered using an optimized 6-stage move picker:
 
 - **[Lockless Lazy SMP](https://www.chessprogramming.org/Lazy_SMP):** Multi-threaded parallel search using a 4-way associative XOR-hashed [Transposition Table](https://www.chessprogramming.org/Transposition_Table) (`AtomicU64`) and asymmetric thread depth staggering with zero mutex overhead during search.
 - **[Polyglot Opening Book](https://www.chessprogramming.org/PolyGlot):** Fast opening lookup integration.
-- **Persistent Memory (`omo_memory.bin`):** Automatic serialization and restoration of Transposition Table entries across sessions.
+- **Persistent Memory (`ondine_memory.bin`):** Automatic serialization and restoration of Transposition Table entries across sessions.
 - **Adaptive [Time Management](https://www.chessprogramming.org/Time_Management):** Dynamic allocation factoring in move stability cutoffs, panic buffers on sharp score drops, soft/hard time margins, and ponderhit support.
 
 ---

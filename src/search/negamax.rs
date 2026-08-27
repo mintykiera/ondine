@@ -64,7 +64,7 @@ pub(crate) fn negamax(
         return SearchResult::new(
             network.evaluate_accumulator(
                 &acc_stack[ply_idx],
-                crate::eval::OmoBoard(board).side_to_move(),
+                crate::eval::OndineBoard(board).side_to_move(),
             ),
             None,
             false,
@@ -226,7 +226,7 @@ pub(crate) fn negamax(
     let mut static_eval = if !in_check {
         network.evaluate_accumulator(
             &acc_stack[ply_idx],
-            crate::eval::OmoBoard(board).side_to_move(),
+            crate::eval::OndineBoard(board).side_to_move(),
         )
     } else {
         -MATE_SCORE
@@ -463,8 +463,8 @@ pub(crate) fn negamax(
         {
             let (parent_acc, child_acc) = acc_split(acc_stack, ply_idx);
             network.update(
-                &crate::eval::OmoBoard(board),
-                &crate::eval::OmoBoard(&next_board),
+                &crate::eval::OndineBoard(board),
+                &crate::eval::OndineBoard(&next_board),
                 parent_acc,
                 child_acc,
             );
@@ -665,7 +665,7 @@ pub(crate) fn quiescence_search(
         } else {
             network.evaluate_accumulator(
                 &acc_stack[ply_idx],
-                crate::eval::OmoBoard(board).side_to_move(),
+                crate::eval::OndineBoard(board).side_to_move(),
             )
         };
     }
@@ -676,7 +676,7 @@ pub(crate) fn quiescence_search(
     } else {
         network.evaluate_accumulator(
             &acc_stack[ply_idx],
-            crate::eval::OmoBoard(board).side_to_move(),
+            crate::eval::OndineBoard(board).side_to_move(),
         )
     };
 
@@ -752,8 +752,8 @@ pub(crate) fn quiescence_search(
         {
             let (parent_acc, child_acc) = acc_split(acc_stack, ply_idx);
             network.update(
-                &crate::eval::OmoBoard(board),
-                &crate::eval::OmoBoard(&next_board),
+                &crate::eval::OndineBoard(board),
+                &crate::eval::OndineBoard(&next_board),
                 parent_acc,
                 child_acc,
             );

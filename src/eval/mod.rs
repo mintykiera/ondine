@@ -1,5 +1,5 @@
 pub mod nnue;
-pub use nnue::OmoBoard;
+pub use nnue::OndineBoard;
 
 pub fn piece_value(p: cozy_chess::Piece) -> i32 {
     match p {

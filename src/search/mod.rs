@@ -77,7 +77,7 @@ pub fn get_best_move(
     let mut total_nodes: u64 = 0;
 
     let mut acc_stack: Vec<nnue_rs::Accumulator> = Vec::with_capacity(ACC_STACK_SIZE);
-    acc_stack.push(network.accumulator(&crate::eval::OmoBoard(board)));
+    acc_stack.push(network.accumulator(&crate::eval::OndineBoard(board)));
     for _ in 1..ACC_STACK_SIZE {
         acc_stack.push(network.empty_accumulator());
     }
