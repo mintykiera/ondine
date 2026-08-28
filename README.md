@@ -14,7 +14,7 @@ Play against Ondine on Lichess: [lichess.org/@/LaOndine](https://lichess.org/@/L
 
 ### Evaluation & Endgame Knowledge
 
-- **Custom [NNUE](https://www.chessprogramming.org/NNUE) (`ondine.nnue`):** Efficiently Updatable Neural Network evaluated with incremental accumulator updates on move make/unmake via `nnue-rs`.
+- **[NNUE](https://www.chessprogramming.org/NNUE) Evaluation (`ondine.nnue`):** Efficiently Updatable Neural Network evaluated with incremental accumulator updates on move make/unmake via `nnue-rs`. Supports modern architectures (HalfKAv2, HalfKAv2_hm, SFNNv10) with automatic score normalization to standard centipawns.
 - **[Syzygy Tablebase](https://www.chessprogramming.org/Syzygy_Bases) Probing:**
   - **Root Probing:** Instant WDL & DTZ resolution for positions with ≤ 6 pieces, selecting optimal winning lines to convert endgames without searching.
   - **In-Tree Probing:** Depth-gated tablebase lookups to guarantee exact theoretical play in simplified branches.
@@ -26,15 +26,15 @@ Play against Ondine on Lichess: [lichess.org/@/LaOndine](https://lichess.org/@/L
 - **Pruning & Reductions:**
   - **[Null Move Pruning (NMP)](https://www.chessprogramming.org/Null_Move_Pruning):** Adaptive depth reduction ($R = 3 + \text{depth} / 3 + \text{clamp}((\text{eval} - \beta) / 200,\, 0,\, 3)$) with [zugzwang](https://www.chessprogramming.org/Zugzwang) verification (non-pawn material check).
   - **[Reverse Futility Pruning (RFP)](https://www.chessprogramming.org/Reverse_Futility_Pruning):** Static evaluation margins at shallow depths.
-  - **[Futility Pruning (FP)](https://www.chessprogramming.org/Futility_Pruning):** Prunes unpromising quiet moves near leaf nodes.
-  - **[Late Move Pruning (LMP)](https://www.chessprogramming.org/Late_Move_Pruning):** Move count thresholds based on quadratic depth scaling ($3 + 2 \times \text{depth}^2$).
+  - **[Futility Pruning (FP)](https://www.chessprogramming.org/Futility_Pruning):** Prunes unpromising quiet moves near leaf nodes ($static\_eval + \text{depth} \times 100 \le \alpha$) while strictly exempting the first quiet move, killer moves, and countermoves.
+  - **[Late Move Pruning (LMP)](https://www.chessprogramming.org/Late_Move_Pruning):** Move count thresholds based on quadratic depth scaling ($(4 + 2 \times \text{depth}^2) / (2 - \text{improving})$), exempting killer and counter moves.
   - **[History-Adjusted Late Move Reductions (LMR)](https://www.chessprogramming.org/Late_Move_Reductions):** Base logarithmic reductions scaled dynamically by quiet history scores ($\text{reduction} - \text{history} / 4096$).
   - **[Static Exchange Evaluation (SEE)](https://www.chessprogramming.org/Static_Exchange_Evaluation):** Iterative exchange evaluation with x-ray discovery for capture verification and pruning.
 
-- **Search Extensions:**
+- **Search Extensions & Reductions:**
   - **[Check Extensions](https://www.chessprogramming.org/Check_Extensions):** Extends search depth when in check.
   - **[Singular Extensions](https://www.chessprogramming.org/Singular_Extensions):** Verifies critical TT moves by searching alternative candidate moves at reduced depth.
-  - **[Internal Iterative Deepening (IID)](https://www.chessprogramming.org/Internal_Iterative_Deepening):** PV-node-gated shallow searches (≥ depth 6) to establish a hash move when TT lookups miss.
+  - **[Internal Iterative Reduction (IIR)](https://www.chessprogramming.org/Internal_Iterative_Reduction):** 1-ply search depth reduction at depth $\ge$ 4 when no TT move is available.
 
 - **[Quiescence Search](https://www.chessprogramming.org/Quiescence_Search):** Tactical capture and promotion resolution with delta pruning, big-delta cutoffs, and SEE filtering.
 
@@ -51,7 +51,7 @@ Moves are ordered using an optimized 6-stage move picker:
 
 ### Concurrency & System
 
-- **[Lockless Lazy SMP](https://www.chessprogramming.org/Lazy_SMP):** Multi-threaded parallel search using a 4-way associative XOR-hashed [Transposition Table](https://www.chessprogramming.org/Transposition_Table) (`AtomicU64`) and asymmetric thread depth staggering with zero mutex overhead during search.
+- **[Lockless Lazy SMP](https://www.chessprogramming.org/Lazy_SMP):** Multi-threaded parallel search using a 4-way associative XOR-hashed [Transposition Table](https://www.chessprogramming.org/Transposition_Table) (`AtomicU64`) and asymmetric thread depth staggering with zero mutex overhead during search. Complete table clearing on `ucinewgame`.
 - **[Polyglot Opening Book](https://www.chessprogramming.org/PolyGlot):** Fast opening lookup integration.
 - **Persistent Memory (`ondine_memory.bin`):** Automatic serialization and restoration of Transposition Table entries across sessions.
 - **Adaptive [Time Management](https://www.chessprogramming.org/Time_Management):** Dynamic allocation with panic buffers on sharp score drops, soft/hard time margins, and ponderhit support.
