@@ -9,7 +9,7 @@ use super::types::{
     ACC_STACK_SIZE, MATE_SCORE, MATE_THRESHOLD, MAX_EXTENSIONS, MAX_PLY, MoveStack, SearchInfo,
     SharedHistory, StagedMovePicker, score_from_tt, score_to_tt,
 };
-use crate::eval::piece_value;
+use crate::eval::{normalize_eval, piece_value};
 use crate::transposition::{NodeType, TranspositionTable};
 
 #[derive(Clone, Copy, Debug)]
@@ -57,10 +57,10 @@ pub(crate) fn negamax(
 
     if ply >= (MAX_PLY as i32) - 1 {
         return SearchResult::new(
-            network.evaluate_accumulator(
+            normalize_eval(network.evaluate_accumulator(
                 &acc_stack[ply_idx],
                 crate::eval::OndineBoard(board).side_to_move(),
-            ),
+            )),
             None,
         );
     }
@@ -219,10 +219,10 @@ pub(crate) fn negamax(
     };
 
     let mut static_eval = if !in_check {
-        network.evaluate_accumulator(
+        normalize_eval(network.evaluate_accumulator(
             &acc_stack[ply_idx],
             crate::eval::OndineBoard(board).side_to_move(),
-        )
+        ))
     } else {
         -MATE_SCORE
     };
@@ -258,7 +258,6 @@ pub(crate) fn negamax(
         }
     }
 
-    // Razoring: if static eval is far below alpha at low depth, verify with qsearch
     if !in_check && ply > 0 && depth <= 3 && excluded_move.is_none() && !is_pv {
         let razor_margin = 150 * depth;
         if static_eval + razor_margin <= alpha {
@@ -314,8 +313,6 @@ pub(crate) fn negamax(
                 }
                 let null_score = -res.score;
                 if null_score >= beta {
-                    // Verification search at high depths to avoid zugzwang blunders.
-                    // Pass prev_move: None so NMP is disabled during verification!
                     if depth >= 12 {
                         let verify_res = negamax(
                             board,
@@ -398,7 +395,6 @@ pub(crate) fn negamax(
 
     let tt_move = tt_entry.and_then(|e| e.best_move);
 
-    // Internal Iterative Reduction: 1-ply reduction when no TT move is available
     let depth = if depth >= 4 && tt_move.is_none() && !in_check && excluded_move.is_none() {
         depth - 1
     } else {
@@ -453,24 +449,29 @@ pub(crate) fn negamax(
             && board.color_on(m.to).is_none();
         let is_capture = board.color_on(m.to).is_some() || is_ep;
         let is_quiet = !is_capture && m.promotion.is_none();
+        let is_killer = ply_idx < MAX_PLY && (killers[0] == Some(m) || killers[1] == Some(m));
+        let is_counter = Some(m) == counter_move;
 
-        // Late Move Pruning: skip late quiet moves at low depth
-        let lmp_threshold = (3 + depth * depth) / (2 - improving as i32);
-        if !in_check && depth <= 4 && is_quiet && quiet_moves_searched > lmp_threshold {
+        let lmp_threshold = (4 + depth * depth * 2) / (2 - improving as i32);
+        if !in_check && depth <= 4 && is_quiet && !is_killer && !is_counter && quiet_moves_searched > lmp_threshold {
             continue;
         }
 
-        // SEE pruning for quiet moves
-        if !in_check && is_quiet && depth <= 6 && move_index > 0 && see(board, m) < -depth * 80 {
+        if !in_check
+            && is_quiet
+            && !is_killer
+            && !is_counter
+            && depth <= 6
+            && move_index > 0
+            && see(board, m) < -depth * 80
+        {
             continue;
         }
 
-        // SEE pruning for captures at low depth
         if !in_check && is_capture && depth <= 5 && move_index > 0 && see(board, m) < -depth * 80 {
             continue;
         }
 
-        // History pruning for quiet moves (only late quiets to prevent pruning candidate killer/counter moves)
         if !in_check && is_quiet && depth <= 5 && quiet_moves_searched >= 3 {
             let hist = shared.get_history(board.side_to_move(), m.from, m.to);
             let cont = prev_move
@@ -486,7 +487,7 @@ pub(crate) fn negamax(
 
         let gives_check = !next_board.checkers().is_empty();
 
-        if futility_pruning && is_quiet && !gives_check {
+        if futility_pruning && is_quiet && !gives_check && !is_killer && !is_counter && quiet_moves_searched > 0 {
             continue;
         }
 
@@ -537,7 +538,6 @@ pub(crate) fn negamax(
             score = -res.score;
         } else {
             let mut reduced_depth = depth - 1 + singular_ext;
-            let is_killer = ply_idx < MAX_PLY && (killers[0] == Some(m) || killers[1] == Some(m));
             let do_lmr = move_index >= 3
                 && depth >= 3
                 && !is_capture
@@ -573,7 +573,6 @@ pub(crate) fn negamax(
             );
             score = -res.score;
 
-            // LMR re-search: only if reduction was actually applied (> 0) and score beat alpha
             if do_lmr && reduced_depth < depth - 1 + singular_ext && score > alpha {
                 let zw_res = negamax(
                     &next_board,
@@ -595,7 +594,6 @@ pub(crate) fn negamax(
                 score = -zw_res.score;
             }
 
-            // PVS re-search: if score is within (alpha, beta), re-search with full window
             if score > alpha && score < beta {
                 let pv_res = negamax(
                     &next_board,
@@ -716,16 +714,15 @@ pub(crate) fn quiescence_search(
         return if in_check {
             -MATE_SCORE + ply
         } else {
-            network.evaluate_accumulator(
+            normalize_eval(network.evaluate_accumulator(
                 &acc_stack[ply_idx],
                 crate::eval::OndineBoard(board).side_to_move(),
-            )
+            ))
         };
     }
 
     let in_check = !board.checkers().is_empty();
 
-    // TT probing in quiescence search
     let hash = board.hash();
     let tt_entry = tt.get(hash);
     if !in_check {
@@ -745,10 +742,10 @@ pub(crate) fn quiescence_search(
     let stand_pat = if in_check {
         -MATE_SCORE + ply
     } else {
-        network.evaluate_accumulator(
+        normalize_eval(network.evaluate_accumulator(
             &acc_stack[ply_idx],
             crate::eval::OndineBoard(board).side_to_move(),
-        )
+        ))
     };
 
     if !in_check {
@@ -782,7 +779,6 @@ pub(crate) fn quiescence_search(
         return -MATE_SCORE + ply;
     }
 
-    // Sort by MVV-LVA + capture history as tiebreaker
     let tt_move = tt_entry.and_then(|e| e.best_move);
     let color = board.side_to_move();
     let moves = move_stack.as_mut_slice();

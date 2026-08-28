@@ -136,7 +136,7 @@ fn main() {
                 handle.stop_and_join();
                 *board.lock().unwrap() = Board::default();
                 game_history.clear();
-                tt.new_search();
+                tt.clear();
                 shared_history.clear();
             }
             "position" => {

@@ -39,12 +39,12 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
         let our_inc = parse_uci_param(tokens, inc_key).unwrap_or(0);
         let explicit_mtg = parse_uci_param(tokens, "movestogo");
         let mtg = explicit_mtg.unwrap_or_else(|| {
-            if safe_time < 1000 {
-                40
-            } else if safe_time < 5000 {
-                30
+            if safe_time < 2000 {
+                50
+            } else if safe_time < 10000 {
+                45
             } else {
-                25
+                40
             }
         });
 

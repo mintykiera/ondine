@@ -243,6 +243,16 @@ impl TranspositionTable {
         self.age.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn clear(&self) {
+        for bucket in &self.table {
+            for entry in &bucket.entries {
+                entry.data1.store(0, Ordering::Relaxed);
+                entry.data2.store(0, Ordering::Relaxed);
+            }
+        }
+        self.age.store(0, Ordering::Relaxed);
+    }
+
     pub fn save_to_file(&self, path: &str) -> IoResult<()> {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
