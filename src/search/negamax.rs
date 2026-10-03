@@ -271,8 +271,9 @@ pub(crate) fn negamax(
         }
     }
 
-    // ProbCut: shallow capture search to quickly prune tactical positions.
     if !in_check
+        && ply > 0
+        && !is_pv
         && depth >= 5
         && beta.abs() < MATE_THRESHOLD
         && excluded_move.is_none()
