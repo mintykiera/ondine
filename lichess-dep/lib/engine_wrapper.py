@@ -627,10 +627,13 @@ def get_homemade_engine(name: str) -> type[MinimalEngine]:
     :return: The engine with this name.
     """
     import homemade
-    from test_bot import homemade as test_homemade
     engine: type[MinimalEngine]
     if name.endswith(test_suffix):  # Test only.
-        engine = getattr(test_homemade, name.removesuffix(test_suffix))
+        try:
+            from test_bot import homemade as test_homemade  # type: ignore[import-not-found]
+            engine = getattr(test_homemade, name.removesuffix(test_suffix))
+        except ImportError:
+            engine = getattr(homemade, name)
     else:
         engine = getattr(homemade, name)
     return engine
