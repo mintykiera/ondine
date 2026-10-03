@@ -21,7 +21,7 @@ use uci::{
 
 fn main() {
     let board = Arc::new(Mutex::new(Board::default()));
-    let mut tt = Arc::new(transposition::TranspositionTable::new(64));
+    let mut tt = Arc::new(transposition::TranspositionTable::new(32));
     let shared_history = Arc::new(SharedHistory::new());
     let mut handle = SearchHandle::new();
     let mut num_threads = 1;
@@ -126,7 +126,7 @@ fn main() {
                 println!("id author kieraesque");
                 println!("option name Threads type spin default 1 min 1 max 256");
                 println!("option name SyzygyPath type string default syzygy");
-                println!("option name Hash type spin default 64 min 1 max 65536");
+                println!("option name Hash type spin default 32 min 1 max 65536");
                 println!("uciok");
             }
             "isready" => {

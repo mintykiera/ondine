@@ -37,6 +37,13 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
         }
 
         let our_inc = parse_uci_param(tokens, inc_key).unwrap_or(0);
+
+        // Extreme scramble: less than 1 second on the clock — play almost instantly.
+        if safe_time < 1000 {
+            let ms = (safe_time / 4).max(10).min(our_inc / 3 + 10);
+            return Duration::from_millis(ms.max(10));
+        }
+
         let explicit_mtg = parse_uci_param(tokens, "movestogo");
         let mtg = explicit_mtg.unwrap_or_else(|| {
             if safe_time < 2000 {
@@ -49,7 +56,12 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
         });
 
         let base = safe_time / mtg.max(1);
-        let target = base + (our_inc * 3) / 4;
+        // Low-time banking: under 3 seconds, use only 40% of increment to bank time.
+        let target = if safe_time < 3000 {
+            base + (our_inc * 2) / 5
+        } else {
+            base + (our_inc * 3) / 4
+        };
         let max_time = if explicit_mtg.is_some() {
             safe_time / 2
         } else {

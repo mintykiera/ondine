@@ -1,4 +1,4 @@
-token: "set-via-LICHESS_BOT_TOKEN-env" # Lichess OAuth2 Token.
+token: "set-via-LICHESS_BOT_TOKEN-env" # Overridden by LICHESS_BOT_TOKEN env var at runtime.
 url: "https://lichess.org/" # Lichess base URL.
 
 engine: # Engine settings.
@@ -98,7 +98,7 @@ engine: # Engine settings.
     uci_options: # Arbitrary UCI options passed to the engine.
       # Move Overhead: 100           # Increase if your bot flags games too often.
       Threads: 1 # Max CPU threads the engine can use.
-      Hash: 64 # Max memory (in megabytes) the engine can allocate.
+      Hash: 32 # Max memory (in megabytes) the engine can allocate.
       SyzygyPath: "./syzygy/" # Paths to Syzygy endgame tablebases that the engine reads.
       UCI_ShowWDL: true # Show the chance of the engine winning.
   #   go_commands:                   # Additional options to pass to the UCI go command.
@@ -215,9 +215,9 @@ matchmaking:
   #  challenge_days:                 # Days for correspondence challenge (to be chosen at random).
   #    - 1
   #    - 2
-  opponent_min_rating: 2500 # Opponents rating should be above this value (600 is the minimum rating in lichess).
-  opponent_max_rating: 4000 # Opponents rating should be below this value (4000 is the maximum rating in lichess).
-  opponent_rating_difference: 400 # The maximum difference in rating between the bot's rating and opponent's rating.
+  opponent_min_rating: 2700 # Opponents rating should be above this value (600 is the minimum rating in lichess).
+  opponent_max_rating: 2980 # Opponents rating should be below this value (4000 is the maximum rating in lichess).
+  opponent_rating_difference: 150 # The maximum difference in rating between the bot's rating and opponent's rating.
   rating_preference: "none" # One of "none", "high", "low".d
   challenge_mode: "rated" # Set it to the mode in which challenges are sent. Possible options are 'casual', 'rated' and 'random'.
   challenge_filter: none # If a bot declines a challenge, do not issue a similar challenge to that bot. Possible options are 'none', 'coarse', and 'fine'.

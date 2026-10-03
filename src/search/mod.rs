@@ -255,6 +255,7 @@ pub fn get_best_move(
                 shared,
                 history_hashes,
                 None,
+                None,
                 network,
                 &mut acc_stack,
                 syzygy,

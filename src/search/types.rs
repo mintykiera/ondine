@@ -13,6 +13,7 @@ pub(crate) const ACC_STACK_SIZE: usize = MAX_PLY + 64;
 pub struct SharedHistory {
     pub history: [[[AtomicI32; 64]; 64]; 2],
     pub cont_history: [[AtomicI32; 64]; 64],
+    pub cont_history_2ply: [[AtomicI32; 64]; 64],
     pub counter_moves: [[[AtomicU32; 64]; 64]; 2],
     pub capture_history: [[[AtomicI32; 64]; 64]; 2],
 }
@@ -23,6 +24,7 @@ impl SharedHistory {
             std::array::from_fn(|_| std::array::from_fn(|_| AtomicI32::new(0)))
         });
         let cont_history = std::array::from_fn(|_| std::array::from_fn(|_| AtomicI32::new(0)));
+        let cont_history_2ply = std::array::from_fn(|_| std::array::from_fn(|_| AtomicI32::new(0)));
         let counter_moves = std::array::from_fn(|_| {
             std::array::from_fn(|_| std::array::from_fn(|_| AtomicU32::new(0)))
         });
@@ -33,6 +35,7 @@ impl SharedHistory {
         Self {
             history,
             cont_history,
+            cont_history_2ply,
             counter_moves,
             capture_history,
         }
@@ -51,6 +54,7 @@ impl SharedHistory {
         for i in 0..64 {
             for j in 0..64 {
                 self.cont_history[i][j].store(0, Ordering::Relaxed);
+                self.cont_history_2ply[i][j].store(0, Ordering::Relaxed);
             }
         }
     }
@@ -70,6 +74,8 @@ impl SharedHistory {
             for j in 0..64 {
                 let c = self.cont_history[i][j].load(Ordering::Relaxed);
                 self.cont_history[i][j].store(c / 2, Ordering::Relaxed);
+                let c2 = self.cont_history_2ply[i][j].load(Ordering::Relaxed);
+                self.cont_history_2ply[i][j].store(c2 / 2, Ordering::Relaxed);
             }
         }
     }
@@ -97,6 +103,18 @@ impl SharedHistory {
         let val = self.cont_history[p][c].load(Ordering::Relaxed);
         let new_val = val + bonus - (val * bonus.abs()) / 16384;
         self.cont_history[p][c].store(new_val.clamp(-16384, 16384), Ordering::Relaxed);
+    }
+
+    pub fn get_cont_2ply(&self, prev_our_to: Square, curr_to: Square) -> i32 {
+        self.cont_history_2ply[prev_our_to as usize][curr_to as usize].load(Ordering::Relaxed)
+    }
+
+    pub fn add_cont_2ply(&self, prev_our_to: Square, curr_to: Square, bonus: i32) {
+        let p = prev_our_to as usize;
+        let c = curr_to as usize;
+        let val = self.cont_history_2ply[p][c].load(Ordering::Relaxed);
+        let new_val = val + bonus - (val * bonus.abs()) / 16384;
+        self.cont_history_2ply[p][c].store(new_val.clamp(-16384, 16384), Ordering::Relaxed);
     }
 
     pub fn get_counter_move(&self, color: cozy_chess::Color, prev_move: Move) -> Option<Move> {
@@ -245,6 +263,7 @@ impl<'a> StagedMovePicker<'a> {
         board: &Board,
         shared: &SharedHistory,
         prev_move: Option<Move>,
+        prev_prev_move: Option<Move>,
     ) -> Option<(Move, usize)> {
         loop {
             match self.stage {
@@ -402,6 +421,9 @@ impl<'a> StagedMovePicker<'a> {
                                 let mut score = shared.get_history(color, m.from, m.to);
                                 if let Some(pm) = prev_move {
                                     score += shared.get_cont_history(pm.to, m.to);
+                                }
+                                if let Some(ppm) = prev_prev_move {
+                                    score += shared.get_cont_2ply(ppm.to, m.to);
                                 }
                                 self.scores[i] = score;
                             }
