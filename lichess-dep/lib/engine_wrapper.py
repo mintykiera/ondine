@@ -754,8 +754,18 @@ def get_book_move(board: chess.Board, game: model.Game,
     books = polyglot_cfg.book.lookup(variant)
 
     for book in books:
-        with chess.polyglot.open_reader(book) as reader:
-            try:
+        candidate = book
+        if not os.path.isfile(candidate):
+            if os.path.isfile(os.path.join("..", book)):
+                candidate = os.path.join("..", book)
+            elif os.path.isfile(os.path.basename(book)):
+                candidate = os.path.basename(book)
+            else:
+                logger.warning(f"Opening book `{book}` not found. Skipping.")
+                continue
+
+        try:
+            with chess.polyglot.open_reader(candidate) as reader:
                 selection = polyglot_cfg.selection
                 min_weight = polyglot_cfg.min_weight
                 normalization = polyglot_cfg.normalization
@@ -770,9 +780,12 @@ def get_book_move(board: chess.Board, game: model.Game,
                     move = reader.choice(board, minimum_weight=min_weight).move
                 elif selection == "best_move":
                     move = reader.find(board, minimum_weight=min_weight).move
-            except IndexError:
-                # python-chess raises "IndexError" if no entries found.
-                move = None
+        except IndexError:
+            # python-chess raises "IndexError" if no entries found.
+            move = None
+        except Exception as e:
+            logger.warning(f"Error reading opening book `{candidate}`: {e}")
+            move = None
 
         if move is not None:
             logger.info(f"Got move {move} from book {book} for game {game.id}")

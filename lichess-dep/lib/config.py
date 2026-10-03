@@ -295,6 +295,13 @@ def validate_config(CONFIG: CONFIG_DICT_TYPE) -> None:
     check_config_section(CONFIG, "dir", str, "engine")
     check_config_section(CONFIG, "name", str, "engine")
 
+    engine_dir = CONFIG["engine"]["dir"]
+    if not os.path.isdir(engine_dir):
+        # Try resolving relative to project root or lichess-dep
+        if os.path.isdir(os.path.join("target", "release")):
+            CONFIG["engine"]["dir"] = os.path.join("target", "release")
+        elif os.path.isdir(os.path.join("..", "target", "release")):
+            CONFIG["engine"]["dir"] = os.path.join("..", "target", "release")
     config_assert(os.path.isdir(CONFIG["engine"]["dir"]),
                   f'Your engine directory `{CONFIG["engine"]["dir"]}` is not a directory.')
 
@@ -303,6 +310,9 @@ def validate_config(CONFIG: CONFIG_DICT_TYPE) -> None:
                   f"Your engine's working directory `{working_dir}` is not a directory.")
 
     engine = os.path.join(CONFIG["engine"]["dir"], CONFIG["engine"]["name"])
+    if not os.path.isfile(engine) and os.path.isfile(engine + ".exe"):
+        CONFIG["engine"]["name"] += ".exe"
+        engine += ".exe"
     config_assert(os.path.isfile(engine) or CONFIG["engine"]["protocol"] == "homemade",
                   f"The engine {engine} file does not exist.")
     config_assert(os.access(engine, os.X_OK) or CONFIG["engine"]["protocol"] == "homemade",

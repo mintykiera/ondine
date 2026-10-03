@@ -12,6 +12,12 @@ pub(crate) fn get_nnue_path() -> PathBuf {
             return path;
         }
     }
+    for candidate in &["ondine.nnue", "lichess-dep/ondine.nnue", "../ondine.nnue", "../lichess-dep/ondine.nnue"] {
+        let p = PathBuf::from(candidate);
+        if p.exists() {
+            return p;
+        }
+    }
     PathBuf::from("ondine.nnue")
 }
 
@@ -49,10 +55,17 @@ pub(crate) fn get_book_path() -> PathBuf {
     if let Ok(mut path) = std::env::current_exe() {
         path.pop();
         path.push("book.bin");
-        path
-    } else {
-        PathBuf::from("book.bin")
+        if path.exists() {
+            return path;
+        }
     }
+    for candidate in &["book.bin", "../book.bin", "lichess-dep/book.bin"] {
+        let p = PathBuf::from(candidate);
+        if p.exists() {
+            return p;
+        }
+    }
+    PathBuf::from("book.bin")
 }
 
 pub(crate) struct SearchHandle {
