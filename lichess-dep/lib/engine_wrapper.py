@@ -628,7 +628,7 @@ def get_homemade_engine(name: str) -> type[MinimalEngine]:
     """
     import homemade
     engine: type[MinimalEngine]
-    if name.endswith(test_suffix):  # Test only.
+    if name.endswith(test_suffix):
         try:
             from test_bot import homemade as test_homemade  # type: ignore[import-not-found]
             engine = getattr(test_homemade, name.removesuffix(test_suffix))
