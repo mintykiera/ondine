@@ -217,13 +217,16 @@ pub fn get_best_move(
         if !is_pondering.load(Ordering::Relaxed) {
             let current_ms = time_limit_ms.load(Ordering::Relaxed);
             if current_ms > 0 {
-                info.time_limit = Duration::from_millis(current_ms);
-                let sl = if info.time_limit > Duration::from_millis(25) {
-                    info.time_limit - Duration::from_millis(15)
-                } else {
-                    (info.time_limit * 8) / 10
-                };
-                info.deadline = Some(info.start_time + sl);
+                let external_limit = Duration::from_millis(current_ms);
+                if external_limit != info.time_limit {
+                    info.time_limit = external_limit;
+                    let sl = if info.time_limit > Duration::from_millis(25) {
+                        info.time_limit - Duration::from_millis(15)
+                    } else {
+                        (info.time_limit * 8) / 10
+                    };
+                    info.deadline = Some(info.start_time + sl);
+                }
             }
         }
 
@@ -336,6 +339,12 @@ pub fn get_best_move(
                     (info.time_limit * 8) / 10
                 };
                 info.deadline = Some(info.start_time + sl);
+                // Sync the atomic so the top-of-loop check and
+                // soft-limit see the extended value.
+                info.time_limit_ms.store(
+                    info.time_limit.as_millis() as u64,
+                    Ordering::Relaxed,
+                );
             }
         }
         prev_score = score;
@@ -345,13 +354,9 @@ pub fn get_best_move(
         }
 
         if !info.is_pondering.load(Ordering::Relaxed) {
-            let current_limit = Duration::from_millis(info.time_limit_ms.load(Ordering::Relaxed));
-            let effective_limit = if current_limit.is_zero() {
-                info.time_limit
-            } else {
-                current_limit
-            };
-            let soft_limit = (effective_limit * 85) / 100;
+            // Use info.time_limit as the single source of truth;
+            // it is always kept in sync with the atomic now.
+            let soft_limit = (info.time_limit * 85) / 100;
             if info.start_time.elapsed() >= soft_limit {
                 break;
             }

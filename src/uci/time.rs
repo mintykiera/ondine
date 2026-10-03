@@ -31,7 +31,7 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
     let inc_key = if side == Color::White { "winc" } else { "binc" };
 
     if let Some(our_time) = parse_uci_param(tokens, time_key) {
-        let safe_time = our_time.saturating_sub(50);
+        let safe_time = our_time.saturating_sub(150);
         if safe_time < 100 {
             return Duration::from_millis(10);
         }

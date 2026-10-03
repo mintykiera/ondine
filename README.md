@@ -10,6 +10,8 @@ Ondine is a high-performance, multi-threaded UCI chess engine written in pure, m
 
 Play against Ondine on Lichess: [lichess.org/@/LaOndine](https://lichess.org/@/LaOndine)
 
+---
+
 ## Architecture & Features
 
 ### Evaluation & Endgame Knowledge
@@ -22,39 +24,41 @@ Play against Ondine on Lichess: [lichess.org/@/LaOndine](https://lichess.org/@/L
 ### Search Pipeline
 
 - **[Principal Variation Search (PVS)](https://www.chessprogramming.org/Principal_Variation_Search):** [Negamax](https://www.chessprogramming.org/Negamax) [alpha-beta search](https://www.chessprogramming.org/Alpha-Beta) with scout zero-window probing and full-depth re-searches.
-- **[Dynamic Aspiration Windows](https://www.chessprogramming.org/Aspiration_Windows):** Tight initial search bounds (±20 cp) centered on the previous iteration score, geometrically widening on fail-high/low with full-window fallback.
+- **[Dynamic Aspiration Windows](https://www.chessprogramming.org/Aspiration_Windows):** Tight initial search bounds (±20 cp) centered on the previous iteration score at `depth >= 4`, geometrically widening on fail-high/low with full-window fallback.
 - **Pruning & Reductions:**
-  - **[Null Move Pruning (NMP)](https://www.chessprogramming.org/Null_Move_Pruning):** Adaptive depth reduction ($R = 3 + \text{depth} / 3 + \text{clamp}((\text{eval} - \beta) / 200,\, 0,\, 3)$) with [zugzwang](https://www.chessprogramming.org/Zugzwang) verification (non-pawn material check).
-  - **[Reverse Futility Pruning (RFP)](https://www.chessprogramming.org/Reverse_Futility_Pruning):** Static evaluation margins at shallow depths.
-  - **[Futility Pruning (FP)](https://www.chessprogramming.org/Futility_Pruning):** Prunes unpromising quiet moves near leaf nodes ($static\_eval + \text{depth} \times 100 \le \alpha$) while strictly exempting the first quiet move, killer moves, and countermoves.
-  - **[Late Move Pruning (LMP)](https://www.chessprogramming.org/Late_Move_Pruning):** Move count thresholds based on quadratic depth scaling ($(4 + 2 \times \text{depth}^2) / (2 - \text{improving})$), exempting killer and counter moves.
-  - **[History-Adjusted Late Move Reductions (LMR)](https://www.chessprogramming.org/Late_Move_Reductions):** Base logarithmic reductions scaled dynamically by quiet history scores ($\text{reduction} - \text{history} / 4096$).
+  - **[Null Move Pruning (NMP)](https://www.chessprogramming.org/Null_Move_Pruning):** Adaptive depth reduction (`R = 3 + depth / 3 + clamp((eval - β) / 200, 0, 3)`) with [zugzwang](https://www.chessprogramming.org/Zugzwang) verification (non-pawn material check) and high-depth verification searches (`depth >= 12`).
+  - **[Reverse Futility Pruning (RFP)](https://www.chessprogramming.org/Reverse_Futility_Pruning):** Static evaluation cutoffs at shallow depths (`depth <= 7`, margin = 60 cp if improving, 80 cp otherwise).
+  - **[Razoring](https://www.chessprogramming.org/Razoring):** Quiescence verification when static evaluation falls far below alpha at shallow depths (`depth <= 3`, margin = `150 * depth`).
+  - **[Futility Pruning (FP)](https://www.chessprogramming.org/Futility_Pruning):** Prunes unpromising quiet moves near leaf nodes (`static_eval + depth * 100 <= α` for `depth <= 4`) while strictly exempting the first quiet move, killer moves, and countermoves.
+  - **[Late Move Pruning (LMP)](https://www.chessprogramming.org/Late_Move_Pruning):** Move count thresholds based on quadratic depth scaling (`(4 + 2 * depth²) / (2 - improving)` for `depth <= 4`), exempting killer and counter moves.
+  - **[History-Adjusted Late Move Reductions (LMR)](https://www.chessprogramming.org/Late_Move_Reductions):** Logarithmic base reductions dynamically softened or deepened by quiet history scores and improving flag (`reduction - history / 4096 - improving`).
   - **[Static Exchange Evaluation (SEE)](https://www.chessprogramming.org/Static_Exchange_Evaluation):** Iterative exchange evaluation with x-ray discovery for capture verification and pruning.
 
 - **Search Extensions & Reductions:**
-  - **[Check Extensions](https://www.chessprogramming.org/Check_Extensions):** Extends search depth when in check.
-  - **[Singular Extensions](https://www.chessprogramming.org/Singular_Extensions):** Verifies critical TT moves by searching alternative candidate moves at reduced depth.
-  - **[Internal Iterative Reduction (IIR)](https://www.chessprogramming.org/Internal_Iterative_Reduction):** 1-ply search depth reduction at depth $\ge$ 4 when no TT move is available.
+  - **[Check Extensions](https://www.chessprogramming.org/Check_Extensions):** 1-ply search depth extension when in check.
+  - **[Singular Extensions](https://www.chessprogramming.org/Singular_Extensions):** Verifies critical TT moves by searching alternative candidate moves at reduced depth `(depth - 1) / 2`; extends depth if the TT move is uniquely superior.
+  - **[Internal Iterative Reduction (IIR)](https://www.chessprogramming.org/Internal_Iterative_Reduction):** 1-ply search depth reduction at `depth >= 4` when no TT move is available.
 
-- **[Quiescence Search](https://www.chessprogramming.org/Quiescence_Search):** Tactical capture and promotion resolution with delta pruning, big-delta cutoffs, and SEE filtering.
+- **[Quiescence Search](https://www.chessprogramming.org/Quiescence_Search):** Tactical capture and promotion resolution featuring stand-pat evaluation, TT probing, big-delta cutoffs (1800 cp), delta pruning (200 cp margin), and SEE capture filtering (`SEE < 0`).
 
 ### Move Ordering
 
 Moves are ordered using an optimized 6-stage move picker:
 
-1. **[Transposition Table](https://www.chessprogramming.org/Transposition_Table) Move:** Hash move from previous iterations.
-2. **Good Captures:** [MVV-LVA](https://www.chessprogramming.org/MVV-LVA) sorted captures, boosted by Capture History, and validated with fast piece value checks or $\text{SEE} \ge 0$.
+1. **[Transposition Table](https://www.chessprogramming.org/Transposition_Table) Move:** Hash move from previous iterations or shallower searches.
+2. **Good Captures:** [MVV-LVA](https://www.chessprogramming.org/MVV-LVA) sorted captures, boosted by Capture History, and validated with fast piece value checks or `SEE >= 0`.
 3. **[Killer Move Heuristic](https://www.chessprogramming.org/Killer_Heuristic):** 2 killer moves per ply (pseudo-legal and deduplicated).
 4. **[Countermove Heuristic](https://www.chessprogramming.org/Countermove_Heuristic):** Refutation moves indexed against the opponent's previous move.
 5. **Quiet Moves:** Scored using a 64×64 [Butterfly History](https://www.chessprogramming.org/History_Heuristic#Butterfly_History) Table and [Continuation History](https://www.chessprogramming.org/History_Heuristic#Continuation_History) Table with proportional gravity damping.
-6. **Bad Captures:** Deferred losing captures ($\text{SEE} < 0$).
+6. **Bad Captures:** Deferred losing captures (`SEE < 0`).
 
-### Concurrency & System
+### Concurrency, Memory & Deployment
 
 - **[Lockless Lazy SMP](https://www.chessprogramming.org/Lazy_SMP):** Multi-threaded parallel search using a 4-way associative XOR-hashed [Transposition Table](https://www.chessprogramming.org/Transposition_Table) (`AtomicU64`) and asymmetric thread depth staggering with zero mutex overhead during search. Complete table clearing on `ucinewgame`.
-- **[Polyglot Opening Book](https://www.chessprogramming.org/PolyGlot):** Fast opening lookup integration.
-- **Persistent Memory (`ondine_memory.bin`):** Automatic serialization and restoration of Transposition Table entries across sessions.
-- **Adaptive [Time Management](https://www.chessprogramming.org/Time_Management):** Dynamic allocation with panic buffers on sharp score drops, soft/hard time margins, and ponderhit support.
+- **Low-Footprint Cloud Architecture:** Default 64 MB Transposition Table (configurable via UCI `Hash`) tuned for 512 MB memory constraints (Heroku Dynos, VPS containers) with zero swap thrashing.
+- **Persistent Memory (`ondine_memory.bin`):** Automatic serialization and restoration of Transposition Table entries across sessions, with cryptographic NNUE network fingerprinting (`ondine_memory.sig`) to discard stale tables when weights update.
+- **[Polyglot Opening Book](https://www.chessprogramming.org/PolyGlot) (`book.bin`):** Embedded Polyglot binary book reader with resilient directory fallback for instant, high-quality opening moves.
+- **Cloud-Hardened [Time Management](https://www.chessprogramming.org/Time_Management):** Dynamic time allocation with a 150 ms network safety margin against cloud latency, panic extensions on sharp score drops, and synchronized atomic limits to avoid iterative deepening extension desyncs.
 
 ---
 
