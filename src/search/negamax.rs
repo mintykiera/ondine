@@ -42,6 +42,7 @@ pub(crate) fn negamax(
     shared: &SharedHistory,
     history_hashes: &mut Vec<u64>,
     prev_move: Option<Move>,
+    prev_prev_move: Option<Move>,
     network: &Network,
     acc_stack: &mut [Accumulator],
     syzygy: &Option<Tablebase<Chess>>,
@@ -272,6 +273,76 @@ pub(crate) fn negamax(
 
     if !in_check
         && ply > 0
+        && !is_pv
+        && depth >= 5
+        && beta.abs() < MATE_THRESHOLD
+        && excluded_move.is_none()
+    {
+        let probcut_beta = beta + 200;
+        let probcut_depth = depth - 4;
+
+        let mut pc_stack = MoveStack::new();
+        board.generate_moves(|move_list| {
+            for m in move_list {
+                let is_ep = board.piece_on(m.from) == Some(Piece::Pawn)
+                    && m.from.file() != m.to.file()
+                    && board.color_on(m.to).is_none();
+                let is_cap = board.color_on(m.to).is_some() || is_ep;
+                let is_promo = m.promotion.is_some();
+                if (is_cap || is_promo) && see(board, m) >= 0 {
+                    pc_stack.push(m);
+                }
+            }
+            false
+        });
+
+        for &m in pc_stack.as_slice() {
+            let mut next_board = board.clone();
+            next_board.play_unchecked(m);
+
+            {
+                let (parent_acc, child_acc) = acc_split(acc_stack, ply_idx);
+                network.update(
+                    &crate::eval::OndineBoard(board),
+                    &crate::eval::OndineBoard(&next_board),
+                    parent_acc,
+                    child_acc,
+                );
+            }
+
+            history_hashes.push(hash);
+            let res = negamax(
+                &next_board,
+                probcut_depth,
+                -probcut_beta,
+                -probcut_beta + 1,
+                ply + 1,
+                extensions,
+                info,
+                tt,
+                shared,
+                history_hashes,
+                Some(m),
+                prev_move,
+                network,
+                acc_stack,
+                syzygy,
+                None,
+            );
+            history_hashes.pop();
+
+            if info.aborted {
+                return SearchResult::new(0, None);
+            }
+
+            if -res.score >= probcut_beta {
+                return SearchResult::new(probcut_beta, None);
+            }
+        }
+    }
+
+    if !in_check
+        && ply > 0
         && depth >= 3
         && excluded_move.is_none()
         && prev_move.is_some()
@@ -302,6 +373,7 @@ pub(crate) fn negamax(
                     shared,
                     history_hashes,
                     None,
+                    prev_move,
                     network,
                     acc_stack,
                     syzygy,
@@ -326,6 +398,7 @@ pub(crate) fn negamax(
                             shared,
                             history_hashes,
                             None,
+                            prev_move,
                             network,
                             acc_stack,
                             syzygy,
@@ -374,6 +447,7 @@ pub(crate) fn negamax(
                         shared,
                         history_hashes,
                         prev_move,
+                        prev_prev_move,
                         network,
                         acc_stack,
                         syzygy,
@@ -439,7 +513,7 @@ pub(crate) fn negamax(
     let mut quiet_moves_searched = 0i32;
     let mut searched_quiets = MoveStack::new();
 
-    while let Some((m, _)) = picker.pick_next(board, shared, prev_move) {
+    while let Some((m, _)) = picker.pick_next(board, shared, prev_move, prev_prev_move) {
         if excluded_move == Some(m) {
             continue;
         }
@@ -529,6 +603,7 @@ pub(crate) fn negamax(
                 shared,
                 history_hashes,
                 Some(m),
+                prev_move,
                 network,
                 acc_stack,
                 syzygy,
@@ -566,6 +641,7 @@ pub(crate) fn negamax(
                 shared,
                 history_hashes,
                 Some(m),
+                prev_move,
                 network,
                 acc_stack,
                 syzygy,
@@ -586,6 +662,7 @@ pub(crate) fn negamax(
                     shared,
                     history_hashes,
                     Some(m),
+                    prev_move,
                     network,
                     acc_stack,
                     syzygy,
@@ -607,6 +684,7 @@ pub(crate) fn negamax(
                     shared,
                     history_hashes,
                     Some(m),
+                    prev_move,
                     network,
                     acc_stack,
                     syzygy,
@@ -654,6 +732,15 @@ pub(crate) fn negamax(
                     for &qm in searched_quiets.as_slice() {
                         if qm != m {
                             shared.add_cont_history(pm.to, qm.to, -bonus);
+                        }
+                    }
+                }
+
+                if let Some(ppm) = prev_prev_move {
+                    shared.add_cont_2ply(ppm.to, m.to, bonus);
+                    for &qm in searched_quiets.as_slice() {
+                        if qm != m {
+                            shared.add_cont_2ply(ppm.to, qm.to, -bonus);
                         }
                     }
                 }

@@ -1,0 +1,1 @@
+worker: cd lichess-dep && python lichess-bot.py
