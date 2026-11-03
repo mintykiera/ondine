@@ -31,8 +31,10 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
     let inc_key = if side == Color::White { "winc" } else { "binc" };
 
     if let Some(our_time) = parse_uci_param(tokens, time_key) {
-        let safe_time = our_time.saturating_sub(150);
-        if safe_time < 100 {
+        // lichess-bot already deducts move_overhead (350ms) before passing wtime/btime to the engine.
+        // A minimal 20ms safety margin is sufficient for internal process latency.
+        let safe_time = our_time.saturating_sub(20);
+        if safe_time < 50 {
             return Duration::from_millis(10);
         }
 
@@ -40,7 +42,9 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
 
         if safe_time < 1000 {
             let ms = if our_inc > 0 {
-                (safe_time / 4).max(10).min(our_inc / 3 + 10)
+                let inc_share = (our_inc * 3) / 4;
+                let bank_share = safe_time / 4;
+                (bank_share + inc_share).min(safe_time.saturating_sub(25)).max(10)
             } else {
                 (safe_time / 6).max(10)
             };
@@ -60,12 +64,14 @@ pub(crate) fn parse_go_time(tokens: &[&str], side: Color) -> Duration {
 
         let base = safe_time / mtg.max(1);
         let target = if safe_time < 3000 {
-            base + (our_inc * 2) / 5
+            base + (our_inc * 3) / 5
         } else {
             base + (our_inc * 3) / 4
         };
         let max_time = if explicit_mtg.is_some() {
             safe_time / 2
+        } else if our_inc > 0 {
+            (safe_time / 3 + (our_inc * 3) / 4).min(safe_time.saturating_sub(50)).max(10)
         } else {
             (safe_time / 3).max(10)
         };

@@ -25,6 +25,16 @@ impl SearchResult {
 }
 
 #[inline(always)]
+fn scale_eval_for_50_move(eval: i32, halfmove_clock: u8) -> i32 {
+    if halfmove_clock <= 40 || eval.abs() >= MATE_THRESHOLD {
+        eval
+    } else {
+        let hmc = (halfmove_clock as i32).min(100);
+        (eval * (100 - hmc)) / 60
+    }
+}
+
+#[inline(always)]
 fn acc_split(stack: &mut [Accumulator], ply: usize) -> (&Accumulator, &mut Accumulator) {
     let (left, right) = stack.split_at_mut(ply + 1);
     (&left[ply], &mut right[0])
@@ -57,13 +67,11 @@ pub(crate) fn negamax(
     let ply_idx = ply as usize;
 
     if ply >= (MAX_PLY as i32) - 1 {
-        return SearchResult::new(
-            normalize_eval(network.evaluate_accumulator(
-                &acc_stack[ply_idx],
-                crate::eval::OndineBoard(board).side_to_move(),
-            )),
-            None,
-        );
+        let raw = normalize_eval(network.evaluate_accumulator(
+            &acc_stack[ply_idx],
+            crate::eval::OndineBoard(board).side_to_move(),
+        ));
+        return SearchResult::new(scale_eval_for_50_move(raw, board.halfmove_clock()), None);
     }
 
     let hash = board.hash();
@@ -85,7 +93,10 @@ pub(crate) fn negamax(
             i += 2;
         }
         if is_repetition {
-            return SearchResult::new(0, None);
+            // Draw contempt: returning +8 causes the side playing the repetition
+            // to receive -8 cp (-res.score). This prevents repetitive shuffling in equal
+            // or winning positions while still repeating to save losing positions.
+            return SearchResult::new(8, None);
         }
     }
 
@@ -240,6 +251,7 @@ pub(crate) fn negamax(
                 }
             }
         }
+        static_eval = scale_eval_for_50_move(static_eval, board.halfmove_clock());
     }
 
     let ply_idx_eval = ply as usize;
@@ -801,11 +813,18 @@ pub(crate) fn quiescence_search(
         return if in_check {
             -MATE_SCORE + ply
         } else {
-            normalize_eval(network.evaluate_accumulator(
-                &acc_stack[ply_idx],
-                crate::eval::OndineBoard(board).side_to_move(),
-            ))
+            scale_eval_for_50_move(
+                normalize_eval(network.evaluate_accumulator(
+                    &acc_stack[ply_idx],
+                    crate::eval::OndineBoard(board).side_to_move(),
+                )),
+                board.halfmove_clock(),
+            )
         };
+    }
+
+    if ply > 0 && board.halfmove_clock() >= 100 {
+        return 0;
     }
 
     let in_check = !board.checkers().is_empty();
@@ -826,7 +845,7 @@ pub(crate) fn quiescence_search(
         }
     }
 
-    let stand_pat = if in_check {
+    let mut stand_pat = if in_check {
         -MATE_SCORE + ply
     } else {
         normalize_eval(network.evaluate_accumulator(
@@ -836,6 +855,7 @@ pub(crate) fn quiescence_search(
     };
 
     if !in_check {
+        stand_pat = scale_eval_for_50_move(stand_pat, board.halfmove_clock());
         if stand_pat >= beta {
             return beta;
         }
@@ -958,4 +978,30 @@ pub(crate) fn quiescence_search(
     }
 
     best_score
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_50_move_rule_scaling() {
+        // Normal maneuvering (<= 40 plies): 100% full evaluation preserved
+        assert_eq!(scale_eval_for_50_move(100, 0), 100);
+        assert_eq!(scale_eval_for_50_move(100, 20), 100);
+        assert_eq!(scale_eval_for_50_move(100, 40), 100);
+
+        // Smooth decay as halfmove clock approaches 100
+        assert_eq!(scale_eval_for_50_move(120, 70), 60); // 120 * 30 / 60 = 60
+        assert_eq!(scale_eval_for_50_move(100, 100), 0); // 100 * 0 / 60 = 0
+        assert_eq!(scale_eval_for_50_move(100, 105), 0); // clamped at 100
+
+        // Defending side (negative eval) scales toward 0 draw
+        assert_eq!(scale_eval_for_50_move(-120, 70), -60);
+        assert_eq!(scale_eval_for_50_move(-100, 100), 0);
+
+        // Checkmate scores are never damped
+        assert_eq!(scale_eval_for_50_move(95000, 95), 95000);
+        assert_eq!(scale_eval_for_50_move(-95000, 95), -95000);
+    }
 }
