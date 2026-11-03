@@ -3,3 +3,7 @@ dataset.txt
 dataset.zip
 tuned_parameters.txt
 logs.py
+__pycache__/
+*.pyc
+lichess_bot_auto_logs/
+lichess-dep/lichess_bot_auto_logs/

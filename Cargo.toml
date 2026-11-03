@@ -12,3 +12,9 @@ polyglot-book-rs = "0.1.0"
 shakmaty = "0.30"
 shakmaty-syzygy = "0.28.1"
 nnue-rs = "0.4.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
