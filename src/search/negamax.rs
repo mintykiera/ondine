@@ -93,10 +93,8 @@ pub(crate) fn negamax(
             i += 2;
         }
         if is_repetition {
-            // Draw contempt: returning +8 causes the side playing the repetition
-            // to receive -8 cp (-res.score). This prevents repetitive shuffling in equal
-            // or winning positions while still repeating to save losing positions.
-            return SearchResult::new(8, None);
+            // Draw by repetition is evaluated as 0 cp
+            return SearchResult::new(0, None);
         }
     }
 
@@ -261,6 +259,7 @@ pub(crate) fn negamax(
             }
         }
         static_eval = scale_eval_for_50_move(static_eval, board.halfmove_clock());
+        static_eval = crate::eval::mop_up_eval(board, static_eval);
     }
 
     let ply_idx_eval = ply as usize;
@@ -865,6 +864,7 @@ pub(crate) fn quiescence_search(
 
     if !in_check {
         stand_pat = scale_eval_for_50_move(stand_pat, board.halfmove_clock());
+        stand_pat = crate::eval::mop_up_eval(board, stand_pat);
         if stand_pat >= beta {
             return beta;
         }
