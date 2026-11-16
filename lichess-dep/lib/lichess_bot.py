@@ -765,9 +765,10 @@ def play_game(li: lichess.Lichess,
                             record_takeback(game, takebacks_accepted)
                             engine.discard_last_move_commentary()
 
-                        wbtime = upd[engine_wrapper.wbtime(board)]
-                        wbinc = upd[engine_wrapper.wbinc(board)]
-                        terminate_time = msec(wbtime) + msec(wbinc) + seconds(60)
+                        wtime = upd.get("wtime") or 0
+                        btime = upd.get("btime") or 0
+                        max_clock_remaining = max(msec(wtime), msec(btime))
+                        terminate_time = max_clock_remaining + seconds(120)
                         game.ping(abort_time, terminate_time, disconnect_time)
                         prior_game = copy.deepcopy(game)
                     elif u_type == "ping" and should_exit_game(board, game, prior_game, li, is_correspondence):
@@ -917,9 +918,15 @@ def should_exit_game(board: chess.Board, game: model.Game, prior_game: model.Gam
         li.abort(game.id)
         return True
     if game.should_terminate_now():
-        logger.info(f"Terminating {game.url()} by lack of activity")
         if game.is_abortable():
+            logger.info(f"Aborting {game.url()} by lack of activity")
             li.abort(game.id)
+            return True
+        if game_is_active(li, game.id):
+            logger.warning(f"Game {game.url()} still active on Lichess; extending terminate timer.")
+            game.ping(seconds(30), seconds(120), seconds(0))
+            return False
+        logger.info(f"Terminating {game.url()} by lack of activity (game no longer active on Lichess)")
         return True
     return False
 
