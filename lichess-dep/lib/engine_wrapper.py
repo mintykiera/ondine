@@ -200,11 +200,22 @@ class EngineWrapper:
         if elapsed < min_time:
             time.sleep(to_seconds(min_time - elapsed))
 
-        self.add_comment(best_move, board)
+        try:
+            self.add_comment(best_move, board)
+        except Exception as e:
+            logger.warning(f"Error adding move commentary: {e}")
         self.print_stats()
         if best_move.resigned and len(board.move_stack) >= 2:
             li.resign(game.id)
         else:
+            if best_move.move is None:
+                legal_moves = list(board.legal_moves)
+                if legal_moves:
+                    logger.warning(f"best_move is None! Using fallback move {legal_moves[0]} for game {game.id}")
+                    best_move.move = legal_moves[0]
+                else:
+                    logger.error(f"No legal moves on board for game {game.id}!")
+                    return
             li.make_move(game.id, best_move)
 
     def add_go_commands(self, time_limit: chess.engine.Limit) -> chess.engine.Limit:
@@ -826,7 +837,7 @@ def get_online_move(li: lichess.Lichess, board: chess.Board, game: model.Game, o
         return [chess.Move.from_uci(move) for move in best_move]
 
     max_out_of_book_moves = online_moves_cfg.max_out_of_book_moves
-    max_opening_moves = online_moves_cfg.max_depth * 2 - 1
+    max_opening_moves = (online_moves_cfg.max_depth * 2 - 1) if online_moves_cfg.max_depth is not None else float("inf")
     game_moves = len(board.move_stack)
     if game_moves > max_opening_moves or out_of_online_opening_book_moves[game.id] >= max_out_of_book_moves:
         return chess.engine.PlayResult(None, None)

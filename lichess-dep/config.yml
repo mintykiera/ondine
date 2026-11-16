@@ -43,7 +43,7 @@ engine: # Engine settings.
   online_moves:
     max_out_of_book_moves: 10 # Stop using online opening books after they don't have a move for 'max_out_of_book_moves' positions. Doesn't apply to the online endgame tablebases.
     max_retries: 2 # The maximum amount of retries when getting an online move.
-    # max_depth: 10                # How many moves from the start to take from online books. Default is no limit.
+    max_depth: 20 # How many moves from the start to take from online books. Default is 20 moves.
     chessdb_book:
       enabled: true # Whether or not to use chessdb book.
       min_time: 5 # Minimum time (in seconds) to use chessdb book.

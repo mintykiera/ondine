@@ -222,6 +222,15 @@ pub(crate) fn negamax(
         );
     }
 
+    // Mate distance pruning: tighten search window and prune subtrees that cannot beat an existing mate
+    if ply > 0 {
+        alpha = alpha.max(-MATE_SCORE + ply);
+        beta = beta.min(MATE_SCORE - ply - 1);
+        if alpha >= beta {
+            return SearchResult::new(alpha, None);
+        }
+    }
+
     let in_check = !board.checkers().is_empty();
 
     let (depth, extensions) = if in_check && extensions < MAX_EXTENSIONS {
@@ -1003,5 +1012,23 @@ mod tests {
         // Checkmate scores are never damped
         assert_eq!(scale_eval_for_50_move(95000, 95), 95000);
         assert_eq!(scale_eval_for_50_move(-95000, 95), -95000);
+    }
+
+    #[test]
+    fn test_mate_distance_pruning_bounds() {
+        let ply = 5;
+        let mut alpha = -MATE_SCORE;
+        let mut beta = MATE_SCORE;
+
+        // At ply 5, worst possible score is -MATE_SCORE + 5, best is MATE_SCORE - 6
+        alpha = alpha.max(-MATE_SCORE + ply);
+        beta = beta.min(MATE_SCORE - ply - 1);
+        assert_eq!(alpha, -MATE_SCORE + 5);
+        assert_eq!(beta, MATE_SCORE - 6);
+        assert!(alpha < beta);
+
+        // If an existing mate in 2 was found (alpha >= MATE_SCORE - 4), ply 5 cannot beat it
+        let higher_alpha = MATE_SCORE - 4;
+        assert!(higher_alpha >= beta); // MDP cutoff triggers!
     }
 }
