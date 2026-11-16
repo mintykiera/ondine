@@ -179,8 +179,8 @@ challenge: # Incoming challenges.
   #   - user4
   # recent_bot_challenge_age: 60     # Maximum age of a bot challenge to be considered recent in seconds
   # max_recent_bot_challenges: 2     # Maximum number of recent challenges that can be accepted from the same bot
-  min_rating: 2300                   # Minimum rating of the challenger to accept a challenge.
-  max_rating: 2850                   # Maximum rating of the challenger to accept a challenge. Avoid 2900+ super-bots while climbing.
+  min_rating: 2200                   # Minimum rating of the challenger to accept a challenge.
+  max_rating: 2820                   # Maximum rating of the challenger to accept a challenge. Decline 2850-3000+ super-bots while climbing.
   # rating_difference: 300          # Maximum rating difference between the bot and the challenger. Overrides min_rating and max_rating if set.
   bullet_requires_increment: false # Require that bullet game challenges from bots have a non-zero increment
   max_simultaneous_games_per_user: 5 # Maximum number of simultaneous games with the same user
@@ -215,10 +215,10 @@ matchmaking:
   #  challenge_days:                 # Days for correspondence challenge (to be chosen at random).
   #    - 1
   #    - 2
-  opponent_min_rating: 2450 # Opponents rating should be above this value (600 is the minimum rating in lichess).
+  opponent_min_rating: 2400 # Opponents rating should be above this value (600 is the minimum rating in lichess).
   opponent_max_rating: 2800 # Opponents rating should be below this value (4000 is the maximum rating in lichess).
-  opponent_rating_difference: 200 # The maximum difference in rating between the bot's rating and opponent's rating.
-  rating_preference: "high" # One of "none", "high", "low".
+  # opponent_rating_difference: 200 # Commented out so bot never seeks 2900-3000+ super-bots.
+  rating_preference: "high" # Challenge top bots within 2400-2800.
   challenge_mode: "rated" # Set it to the mode in which challenges are sent. Possible options are 'casual', 'rated' and 'random'.
   challenge_filter: none # If a bot declines a challenge, do not issue a similar challenge to that bot. Possible options are 'none', 'coarse', and 'fine'.
   # block_list:                      # The list of bots that will not be challenged
